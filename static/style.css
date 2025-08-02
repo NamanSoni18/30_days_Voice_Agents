@@ -1,0 +1,182 @@
+/* FastAPI Voice Agents - Clean & Modern Styles */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+}
+
+.container {
+    width: 90%;
+    max-width: 600px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+header {
+    text-align: center;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+    margin-bottom: 30px;
+    width: max-content;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    color: #4a5568;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+
+.subtitle {
+    font-size: 1.2rem;
+    color: #667eea;
+    font-weight: 500;
+}
+
+main {
+    background: rgba(255, 255, 255, 0.95);
+    padding: 40px 30px;
+    border-radius: 0 0 20px 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.card {
+    max-width: 100%;
+}
+
+.card h2 {
+    color: #4a5568;
+    margin-bottom: 20px;
+    font-size: 1.8rem;
+    font-weight: 600;
+}
+
+.card p {
+    color: #666;
+    margin-bottom: 30px;
+    font-size: 1.1rem;
+    line-height: 1.6;
+}
+
+.btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 15px 40px;
+    border-radius: 50px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    margin-bottom: 30px;
+}
+
+.btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+}
+
+.btn:active {
+    transform: translateY(-1px);
+}
+
+.btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.message-area {
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.success-message {
+    background: linear-gradient(135deg, #48bb78, #38a169);
+    color: white;
+    padding: 20px 25px;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(72, 187, 120, 0.3);
+    font-size: 1.1rem;
+    line-height: 1.5;
+    animation: slideIn 0.5s ease-out;
+}
+
+.error-message {
+    background: linear-gradient(135deg, #f56565, #e53e3e);
+    color: white;
+    padding: 20px 25px;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(245, 101, 101, 0.3);
+    font-size: 1.1rem;
+    line-height: 1.5;
+    animation: slideIn 0.5s ease-out;
+}
+
+/* Animations */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .container {
+        width: 95%;
+    }
+    
+    header {
+        padding: 30px 20px;
+    }
+    
+    header h1 {
+        font-size: 2rem;
+    }
+    
+    .subtitle {
+        font-size: 1rem;
+    }
+    
+    main {
+        padding: 30px 20px;
+    }
+    
+    .card h2 {
+        font-size: 1.5rem;
+    }
+    
+    .card p {
+        font-size: 1rem;
+    }
+    
+    .btn {
+        padding: 12px 30px;
+        font-size: 1rem;
+    }
+}
