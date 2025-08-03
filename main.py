@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -9,18 +9,16 @@ from typing import Optional
 from dotenv import load_dotenv
 import murf
 
-# Load environment variables from .env file
 load_dotenv()
 
 app = FastAPI(title="30 Days of Voice Agents - FastAPI")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Pydantic model for text input
 class TextToSpeechRequest(BaseModel):
     text: str
-    speed: Optional[float] = 1.0    # Optional speech speed
-    pitch: Optional[float] = 1.0    # Optional pitch adjustment
+    speed: Optional[float] = 1.0
+    pitch: Optional[float] = 1.0
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -41,8 +39,6 @@ async def text_to_speech(request: TextToSpeechRequest):
     
     try:
         client = murf.Murf(api_key=murf_api_key)
-        
-        # Generate speech using Murf SDK
         response = client.text_to_speech.generate(
             text=request.text,
             voice_id="en-US-natalie",
