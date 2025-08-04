@@ -1,28 +1,57 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>30 Days of Voice Agents - FastAPI</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
     <div class="container">
-        <header>
-            <h1>Day 01/30 Days of Voice Agents</h1>
-            <p class="subtitle">FastAPI Backend</p>
-        </header>
-        
-        <main>
-            <div class="card">
-                <h2>Backend Message Test</h2>
-                <p>Click the button below to get a message from the FastAPI backend:</p>
-                <button id="getMessageBtn" class="btn">Get Message from Backend</button>
-                <div id="messageDisplay" class="message-area"></div>
+      <header>
+        <h1>Murf AI Voice Agents</h1>
+      </header>
+
+      <main>
+        <div class="card">
+          <h2>Text to Speech Generator</h2>
+          <div class="form-group">
+            <label for="textInput">Enter text to convert to speech:</label>
+            <textarea
+              id="textInput"
+              name="text"
+              placeholder="Type your text here..."
+              rows="4"
+              maxlength="500"
+            ></textarea>
+            <div class="char-counter">
+              <span id="charCount">0</span>/500 characters
             </div>
-        </main>
+          </div>
+
+          <div class="controls">
+            <button id="generateBtn" class="btn primary">
+              <span class="btn-text">Generate Audio</span>
+              <span class="btn-loader" style="display: none"
+                >Generating...</span
+              >
+            </button>
+          </div>
+          <div id="messageDisplay" class="message-display"></div>
+          <div
+            id="audioContainer"
+            class="audio-container"
+            style="display: none"
+          >
+            <h3>Generated Audio:</h3>
+            <audio id="audioPlayer" controls>
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+        </div>
+      </main>
     </div>
-    
+
     <script src="/static/app.js"></script>
-</body>
+  </body>
 </html>

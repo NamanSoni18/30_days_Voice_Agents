@@ -41,7 +41,7 @@ async def text_to_speech(request: TextToSpeechRequest):
         client = murf.Murf(api_key=murf_api_key)
         response = client.text_to_speech.generate(
             text=request.text,
-            voice_id="en-US-natalie",
+            voice_id="en-US-natalie",  # Using a common voice ID
         )
         
         return {

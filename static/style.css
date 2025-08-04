@@ -52,7 +52,7 @@ header h1 {
 main {
     background: rgba(255, 255, 255, 0.95);
     padding: 40px 30px;
-    border-radius: 0 0 20px 20px;
+    border-radius: 20px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(10px);
 }
@@ -86,7 +86,6 @@ main {
     cursor: pointer;
     transition: all 0.3s ease;
     box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-    margin-bottom: 30px;
 }
 
 .btn:hover {
@@ -104,9 +103,90 @@ main {
     transform: none;
 }
 
-.message-area {
-    min-height: 60px;
+/* Form Styles */
+.form-group {
+    margin-bottom: 25px;
+    text-align: left;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #4a5568;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+#textInput {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 120px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+#textInput:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.char-counter {
+    text-align: right;
+    margin-top: 5px;
+    font-size: 0.9rem;
+    color: #718096;
+}
+
+.controls {
     display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.btn.primary {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    min-width: 160px;
+}
+
+.btn.secondary {
+    background: linear-gradient(135deg, #4a5568, #2d3748);
+    flex: 0 0 auto;
+    min-width: 140px;
+}
+
+.btn-loader {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-loader::after {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Message Display */
+.message-display {
+    margin: 20px;
+    min-height: 50px;
+    display: none;
     align-items: center;
     justify-content: center;
 }
@@ -114,10 +194,10 @@ main {
 .success-message {
     background: linear-gradient(135deg, #48bb78, #38a169);
     color: white;
-    padding: 20px 25px;
-    border-radius: 15px;
+    padding: 15px 20px;
+    border-radius: 12px;
     box-shadow: 0 4px 15px rgba(72, 187, 120, 0.3);
-    font-size: 1.1rem;
+    font-size: 1rem;
     line-height: 1.5;
     animation: slideIn 0.5s ease-out;
 }
@@ -125,12 +205,54 @@ main {
 .error-message {
     background: linear-gradient(135deg, #f56565, #e53e3e);
     color: white;
-    padding: 20px 25px;
-    border-radius: 15px;
+    padding: 15px 20px;
+    border-radius: 12px;
     box-shadow: 0 4px 15px rgba(245, 101, 101, 0.3);
-    font-size: 1.1rem;
+    font-size: 1rem;
     line-height: 1.5;
     animation: slideIn 0.5s ease-out;
+}
+
+/* Audio Container */
+.audio-container {
+    background: #f7fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 15px;
+    padding: 25px;
+    margin-top: 20px;
+    text-align: center;
+}
+
+.audio-container h3 {
+    color: #4a5568;
+    margin-bottom: 15px;
+    font-size: 1.3rem;
+}
+
+#audioPlayer {
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+}
+
+.audio-info {
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 15px;
+    text-align: left;
+}
+
+.audio-info p {
+    margin: 0;
+    color: #4a5568;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.audio-info strong {
+    color: #2d3748;
 }
 
 /* Animations */
