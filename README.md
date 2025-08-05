@@ -1,15 +1,27 @@
-# 30 Days of Voice Agents - Text-to-Speech Application
+# 30 Days of Voice Agents - Text-to-Speech & Echo Bot Application
 
-A modern web application built with FastAPI and Murf AI that converts text to high-quality speech. This project demonstrates the integration of a Python backend with Murf's text-to-speech API and features a responsive web interface.
+A modern web application built with FastAPI and Murf AI that features both text-to-speech conversion and voice recording capabilities. This project demonstrates the integration of a Python backend with Murf's text-to-speech API alongside client-side audio recording using the Web Audio API.
 
 ## ✨ Features
 
+### 🎤 Text-to-Speech Generator
 - **Text-to-Speech Conversion**: Convert any text (up to 500 characters) to natural-sounding speech using Murf AI
-- **Modern Web Interface**: Clean, responsive design with real-time character counting
-- **FastAPI Backend**: High-performance async Python web framework
-- **Real-time Feedback**: Loading states and error handling for better user experience
-- **Audio Playback**: Built-in audio player with controls
+- **Real-time Character Counting**: Visual feedback with color-coded limits (green/yellow/red)
 - **Keyboard Shortcuts**: Press Ctrl+Enter to quickly generate audio
+
+### 🎙️ Echo Bot
+- **Voice Recording**: Record audio directly from your microphone using browser's MediaRecorder API
+- **Real-time Timer**: See recording duration in real-time
+- **Instant Playback**: Automatically plays back your recorded voice
+- **Recording Controls**: Start/Stop recording with visual feedback
+- **Audio Management**: Play again, record again, and proper cleanup of audio resources
+
+### 🎨 General Features
+- **Modern Web Interface**: Clean, responsive design with separate containers for each feature
+- **FastAPI Backend**: High-performance async Python web framework
+- **Real-time Feedback**: Loading states and comprehensive error handling
+- **Audio Playback**: Built-in HTML5 audio players with standard controls
+- **Cross-browser Support**: Works on Chrome, Firefox, Safari, and other modern browsers
 - **Environment-based Configuration**: Secure API key management
 
 ## 📁 Project Structure
@@ -29,17 +41,26 @@ A modern web application built with FastAPI and Murf AI that converts text to hi
 
 ## 🔧 How It Works
 
+### Text-to-Speech Generator
 1. **Frontend**: User enters text in the web interface (up to 500 characters)
 2. **API Request**: JavaScript sends a POST request to `/api/generate` with the text
 3. **Murf Integration**: FastAPI backend calls Murf AI's text-to-speech API
 4. **Audio Response**: Generated audio is returned and played in the browser
 5. **Error Handling**: Comprehensive error messages for various failure scenarios
 
+### Echo Bot
+1. **Microphone Access**: Browser requests microphone permission from user
+2. **Recording**: MediaRecorder API captures audio with real-time timer display
+3. **Audio Processing**: Recorded audio chunks are compiled into a playable blob
+4. **Playback**: Audio is automatically played back using HTML5 audio element
+5. **Resource Management**: Microphone resources are properly released after recording
+
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.7 or higher
 - A Murf AI API key ([Get one here](https://murf.ai))
+- Modern web browser with microphone support (Chrome, Firefox, Safari, Edge)
 
 ### Installation
 
@@ -62,9 +83,11 @@ A modern web application built with FastAPI and Murf AI that converts text to hi
    python main.py
    ```
 
-5. **Open your browser**
+5. **Open your browser and allow microphone access**
    
    Navigate to: `http://127.0.0.1:8000`
+   
+   **Important**: When using the Echo Bot feature, your browser will request microphone permission. Click "Allow" to enable voice recording functionality.
 
 ## � API Endpoints
 
@@ -108,23 +131,41 @@ A modern web application built with FastAPI and Murf AI that converts text to hi
 
 ## 🛠️ Technologies Used
 
+### Backend
 - **[FastAPI](https://fastapi.tiangolo.com/)**: Modern, fast web framework for building APIs with Python
 - **[Murf AI SDK](https://murf.ai)**: Official Python SDK for text-to-speech conversion
 - **[Uvicorn](https://www.uvicorn.org/)**: Lightning-fast ASGI server for production
 - **[Jinja2](https://jinja.palletsprojects.com/)**: Template engine for dynamic HTML rendering
 - **[python-dotenv](https://pypi.org/project/python-dotenv/)**: Environment variable management
+
+### Frontend
 - **HTML5 & CSS3**: Modern web standards with responsive design
 - **Vanilla JavaScript**: Frontend interactivity without external frameworks
+- **MediaRecorder API**: Browser-native audio recording capabilities
+- **Web Audio API**: Real-time audio processing and playback
+- **Blob API**: Handling recorded audio data
 
 ## 🎨 Frontend Features
 
+### Text-to-Speech Section
 - **Responsive Design**: Works seamlessly on desktop, tablet, and mobile devices
 - **Real-time Character Counter**: Visual feedback with color-coded limits (green/yellow/red)
 - **Loading States**: Visual feedback during audio generation
-- **Error Handling**: User-friendly error messages for various scenarios
 - **Keyboard Shortcuts**: Ctrl+Enter to quickly generate audio
-- **Audio Controls**: Built-in HTML5 audio player with standard controls
-- **Smooth Animations**: CSS transitions for better user experience
+
+### Echo Bot Section
+- **Real-time Recording Timer**: Shows recording duration (0s, 1s, 2s...)
+- **Visual Recording Indicator**: Animated pulsing dot during recording
+- **Microphone Permission Handling**: Clear error messages for permission issues
+- **Audio Format Support**: Multiple codec support (WebM, MP4, OGG, WAV)
+- **Resource Management**: Automatic cleanup of microphone and audio resources
+
+### General UI Features
+- **Dual Container Layout**: Separate, visually distinct sections for each feature
+- **Error Handling**: User-friendly error messages for various scenarios
+- **Audio Controls**: Built-in HTML5 audio players with standard controls
+- **Smooth Animations**: CSS transitions and keyframe animations
+- **Cross-browser Compatibility**: Tested on major modern browsers
 
 ## 📦 Dependencies
 
@@ -178,6 +219,7 @@ FastAPI automatically generates interactive API documentation:
 
 ### Common Issues
 
+#### Text-to-Speech Related
 1. **"MURF_API_KEY environment variable not set"**
    - Make sure you have created a `.env` file in the project root
    - Verify your API key is correctly set in the `.env` file
@@ -190,18 +232,65 @@ FastAPI automatically generates interactive API documentation:
    - Verify your Murf API key is valid and has sufficient credits
    - Check that your text doesn't exceed the 500 character limit
 
+#### Echo Bot Related
+4. **"Microphone access denied"**
+   - Click "Allow" when the browser requests microphone permission
+   - In Chrome: Go to Settings > Privacy and Security > Site Settings > Microphone
+   - Ensure the site has permission to access your microphone
+
+5. **"No microphone found"**
+   - Check that your microphone is properly connected
+   - Verify the microphone is working in other applications
+   - Try refreshing the page and granting permission again
+
+6. **Recording not working**
+   - Ensure you're using a modern browser (Chrome 49+, Firefox 25+, Safari 14.1+)
+   - Check browser console for detailed error messages
+   - Try using a different browser if issues persist
+
+7. **"Your browser doesn't support audio recording"**
+   - Update your browser to the latest version
+   - Use Chrome, Firefox, Safari, or Edge for best compatibility
+
+### Browser Compatibility
+
+**Fully Supported:**
+- Chrome 49+
+- Firefox 25+
+- Safari 14.1+
+- Edge 79+
+
+**Limited Support:**
+- Internet Explorer: Not supported
+- Older mobile browsers: May have limited functionality
+
 ### Logging
 
 The application includes console logging for debugging. Check the browser console and terminal output for detailed error information.
 
 ## 📝 Usage
 
+### Text-to-Speech Generator
 1. **Enter Text**: Type or paste your text into the textarea (max 500 characters)
 2. **Character Counter**: Watch the real-time character count with color-coded feedback
 3. **Generate Audio**: Click "Generate Audio" or press Ctrl+Enter
 4. **Loading State**: The button shows "Generating..." while processing
 5. **Play Audio**: Use the built-in audio controls to play the generated speech
 6. **Error Handling**: Any errors will be displayed with helpful messages
+
+### Echo Bot
+1. **Start Recording**: Click "Start Recording" button
+2. **Grant Permission**: Allow microphone access when prompted by your browser
+3. **Record Audio**: Speak into your microphone while watching the real-time timer
+4. **Stop Recording**: Click "Stop Recording" when finished
+5. **Automatic Playback**: Your recorded voice will automatically play back
+6. **Additional Controls**: Use "Play Again" to replay or "Record Again" for a new recording
+
+### Tips for Best Experience
+- **Microphone Quality**: Use a good quality microphone for better recording results
+- **Quiet Environment**: Record in a quiet space to minimize background noise
+- **Browser Permission**: Always allow microphone access for Echo Bot to work
+- **Audio Format**: The app automatically selects the best supported audio format for your browser
 
 ## 🤝 Contributing
 
@@ -217,4 +306,11 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-**Built with ❤️ using FastAPI and Murf AI**
+**Built with ❤️ using FastAPI, Murf AI, and Web Audio APIs**
+
+### 🎯 Project Highlights
+- **Dual Functionality**: Both AI-powered text-to-speech and real-time voice recording
+- **Modern Web Technologies**: Leverages latest browser APIs for audio processing
+- **Production Ready**: Comprehensive error handling and browser compatibility
+- **User-Friendly**: Intuitive interface with clear visual feedback
+- **Open Source**: MIT licensed and open for contributions

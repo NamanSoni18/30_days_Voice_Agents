@@ -7,6 +7,7 @@
 }
 
 body {
+    padding: 30px;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
@@ -55,6 +56,25 @@ main {
     border-radius: 20px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(10px);
+    margin-bottom: 20px;
+}
+
+.tts-section {
+    background: rgba(255, 255, 255, 0.95);
+    padding: 40px 30px;
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+    margin-bottom: 20px;
+}
+
+.echo-section {
+    background: rgba(248, 250, 252, 0.95);
+    padding: 40px 30px;
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(102, 126, 234, 0.2);
 }
 
 .card {
@@ -255,6 +275,98 @@ main {
     color: #2d3748;
 }
 
+/* Echo Bot Specific Styles */
+.echo-section .card h1 {
+    color: #667eea;
+    margin-bottom: 15px;
+    font-size: 2rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.echo-section .card p {
+    color: #4a5568;
+    margin-bottom: 25px;
+    font-size: 1.1rem;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.recording-status {
+    margin: 20px 0;
+    padding: 15px;
+    background: #fff5f5;
+    border: 2px dashed #fc8181;
+    border-radius: 10px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.recording-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: #e53e3e;
+    font-weight: 600;
+}
+
+.recording-timer {
+    background: #e53e3e;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.9em;
+    min-width: 30px;
+    text-align: center;
+}
+
+.pulse {
+    width: 12px;
+    height: 12px;
+    background: #e53e3e;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 0.7;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.audio-actions {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.btn.secondary {
+    background: #718096;
+    color: white;
+}
+
+.btn.secondary:hover:not(:disabled) {
+    background: #4a5568;
+    transform: translateY(-2px);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
 /* Animations */
 @keyframes slideIn {
     from {
@@ -285,12 +397,17 @@ main {
         font-size: 1rem;
     }
     
-    main {
+    main, .tts-section, .echo-section {
         padding: 30px 20px;
+        margin-bottom: 15px;
     }
     
     .card h2 {
         font-size: 1.5rem;
+    }
+    
+    .echo-section .card h1 {
+        font-size: 1.7rem;
     }
     
     .card p {
@@ -300,5 +417,14 @@ main {
     .btn {
         padding: 12px 30px;
         font-size: 1rem;
+    }
+    
+    .controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .btn.primary, .btn.secondary {
+        min-width: 200px;
     }
 }

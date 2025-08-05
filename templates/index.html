@@ -12,7 +12,8 @@
         <h1>Murf AI Voice Agents</h1>
       </header>
 
-      <main>
+      <!-- Text to Speech Section -->
+      <main class="tts-section">
         <div class="card">
           <h2>Text to Speech Generator</h2>
           <div class="form-group">
@@ -47,6 +48,43 @@
             <audio id="audioPlayer" controls>
               Your browser does not support the audio element.
             </audio>
+          </div>
+        </div>
+      </main>
+
+      <main class="echo-section">
+        <div class="card">
+          <h1>Echo Bot</h1>
+          <p>Record your voice and play it back!</p>
+          
+          <div class="controls">
+            <button id="startRecordingBtn" class="btn primary">
+              <span class="btn-text">Start Recording</span>
+            </button>
+            <button id="stopRecordingBtn" class="btn secondary" disabled>
+              <span class="btn-text">Stop Recording</span>
+            </button>
+          </div>
+
+          <div id="recordingStatus" class="recording-status" style="display: none;">
+            <div class="recording-indicator">
+              <div class="pulse"></div>
+              <span>Recording...</span>
+              <span id="recordingTimer" class="recording-timer">0s</span>
+            </div>
+          </div>
+
+          <div id="echoMessageDisplay" class="message-display"></div>
+          
+          <div id="echoAudioContainer" class="audio-container" style="display: none;">
+            <h3>Your Recording:</h3>
+            <audio id="echoAudioPlayer" controls>
+              Your browser does not support the audio element.
+            </audio>
+            <div class="audio-actions">
+              <button id="playAgainBtn" class="btn secondary">Play Again</button>
+              <button id="recordAgainBtn" class="btn primary">Record Again</button>
+            </div>
           </div>
         </div>
       </main>
