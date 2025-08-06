@@ -1,6 +1,6 @@
-# 30 Days of Voice Agents - Text-to-Speech & Echo Bot Application
+# 30 Days of Voice Agents - Text-to-Speech & Audio Upload Application
 
-A modern web application built with FastAPI and Murf AI that features both text-to-speech conversion and voice recording capabilities. This project demonstrates the integration of a Python backend with Murf's text-to-speech API alongside client-side audio recording using the Web Audio API.
+A modern web application built with FastAPI and Murf AI that features text-to-speech conversion, voice recording, and audio file upload capabilities. This project demonstrates the integration of a Python backend with Murf's text-to-speech API alongside client-side audio recording and server-side file handling.
 
 ## ✨ Features
 
@@ -9,12 +9,13 @@ A modern web application built with FastAPI and Murf AI that features both text-
 - **Real-time Character Counting**: Visual feedback with color-coded limits (green/yellow/red)
 - **Keyboard Shortcuts**: Press Ctrl+Enter to quickly generate audio
 
-### 🎙️ Echo Bot
+### 🎙️ Audio Recording & Upload
 - **Voice Recording**: Record audio directly from your microphone using browser's MediaRecorder API
 - **Real-time Timer**: See recording duration in real-time
 - **Instant Playback**: Automatically plays back your recorded voice
-- **Recording Controls**: Start/Stop recording with visual feedback
-- **Audio Management**: Play again, record again, and proper cleanup of audio resources
+- **Audio Upload**: Upload recorded audio files to the server with validation
+- **File Management**: Server-side storage with unique filenames and metadata tracking
+- **Supported Formats**: WAV, MP3, WebM (with codecs), OGG, M4A, and WAVE files
 
 ### 🎨 General Features
 - **Modern Web Interface**: Clean, responsive design with separate containers for each feature
@@ -35,6 +36,7 @@ A modern web application built with FastAPI and Murf AI that features both text-
 ├── static/
 │   ├── app.js            # Frontend JavaScript functionality
 │   └── style.css         # CSS styles and responsive design
+├── uploads/               # Directory for uploaded audio files
 ├── __pycache__/           # Python bytecode cache
 └── README.md             # Project documentation
 ```
@@ -43,17 +45,18 @@ A modern web application built with FastAPI and Murf AI that features both text-
 
 ### Text-to-Speech Generator
 1. **Frontend**: User enters text in the web interface (up to 500 characters)
-2. **API Request**: JavaScript sends a POST request to `/api/generate` with the text
-3. **Murf Integration**: FastAPI backend calls Murf AI's text-to-speech API
-4. **Audio Response**: Generated audio is returned and played in the browser
+2. **API Request**: JavaScript sends a POST request to `/tts/generate` with the text
+3. **Murf Integration**: FastAPI backend calls Murf AI's text-to-speech API via HTTP requests
+4. **Audio Response**: Generated audio URL is returned and played in the browser
 5. **Error Handling**: Comprehensive error messages for various failure scenarios
 
-### Echo Bot
+### Audio Recording & Upload
 1. **Microphone Access**: Browser requests microphone permission from user
 2. **Recording**: MediaRecorder API captures audio with real-time timer display
 3. **Audio Processing**: Recorded audio chunks are compiled into a playable blob
-4. **Playback**: Audio is automatically played back using HTML5 audio element
-5. **Resource Management**: Microphone resources are properly released after recording
+4. **File Upload**: Audio blob is uploaded to `/upload-audio` endpoint with validation
+5. **Server Storage**: Files are saved to `/uploads` directory with unique UUIDs
+6. **Metadata Response**: Server returns file information including size and filename
 
 ## 🚀 Quick Start
 
@@ -89,32 +92,71 @@ A modern web application built with FastAPI and Murf AI that features both text-
    
    **Important**: When using the Echo Bot feature, your browser will request microphone permission. Click "Allow" to enable voice recording functionality.
 
-## � API Endpoints
+## 📡 API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/` | Serves the main HTML page |
-| `POST` | `/api/generate` | Generate speech from text using Murf AI |
+| `POST` | `/tts/generate` | Generate speech from text using Murf AI |
+| `POST` | `/upload-audio` | Upload audio files to server with validation |
 | `GET` | `/api/backend` | Test endpoint for backend connectivity |
 | `GET` | `/docs` | Interactive API documentation (Swagger UI) |
 | `GET` | `/redoc` | Alternative API documentation (ReDoc) |
 
-### Text-to-Speech API (`/api/generate`)
+### Text-to-Speech API (`/tts/generate`)
 
 **Request Body:**
 ```json
 {
-  "text": "Hello, this is a test message",
-  "speed": 1.0,    // Optional, defaults to 1.0
-  "pitch": 1.0     // Optional, defaults to 1.0
+  "text": "Hello, this is a test message"
 }
 ```
 
 **Response (Success):**
 ```json
 {
-  "status": "success",
-  "message": "Audio generated successfully",
+  "audio_url": "https://murf.ai/audio/generated-audio-file-url"
+}
+```
+
+**Response (Error):**
+```json
+{
+  "detail": "Error message describing what went wrong"
+}
+```
+
+### Audio Upload API (`/upload-audio`)
+
+**Request**: Multipart form data with audio file
+
+**Supported File Types:**
+- `audio/wav`
+- `audio/mp3` 
+- `audio/webm` (including codecs like `audio/webm;codecs=opus`)
+- `audio/ogg`
+- `audio/m4a`
+- `audio/wave`
+- `audio/mpeg`
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "filename": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.webm",
+  "original_filename": "recording_1754473144560.webm",
+  "content_type": "audio/webm;codecs=opus",
+  "size": 45632,
+  "message": "Audio file uploaded successfully"
+}
+```
+
+**Response (Error):**
+```json
+{
+  "detail": "Invalid file type: image/png. Allowed types: .wav, .mp3, .webm, .ogg, .m4a, .wave"
+}
+```
   "response": "base64_encoded_audio_data_or_url",
   "text": "Hello, this is a test message"
 }
@@ -175,9 +217,10 @@ This project uses the following Python packages (see `requirements.txt`):
 fastapi==0.104.1          # Web framework for building APIs
 uvicorn[standard]==0.24.0 # ASGI server for FastAPI
 jinja2==3.1.2             # Template engine for HTML rendering
-python-multipart==0.0.6   # For handling form data
+python-multipart==0.0.6   # For handling form data and file uploads
 python-dotenv==1.0.0      # Environment variable management
 murf==2.0.0               # Official Murf AI Python SDK
+requests==2.31.0          # HTTP library for API calls
 ```
 
 ## 🔧 Configuration
@@ -278,13 +321,15 @@ The application includes console logging for debugging. Check the browser consol
 5. **Play Audio**: Use the built-in audio controls to play the generated speech
 6. **Error Handling**: Any errors will be displayed with helpful messages
 
-### Echo Bot
+### Audio Recording & Upload
 1. **Start Recording**: Click "Start Recording" button
 2. **Grant Permission**: Allow microphone access when prompted by your browser
 3. **Record Audio**: Speak into your microphone while watching the real-time timer
 4. **Stop Recording**: Click "Stop Recording" when finished
 5. **Automatic Playback**: Your recorded voice will automatically play back
-6. **Additional Controls**: Use "Play Again" to replay or "Record Again" for a new recording
+6. **Upload to Server**: Click "Upload to Server" to save the audio file
+7. **Server Processing**: File is validated, saved with unique UUID, and metadata returned
+8. **Additional Controls**: Use "Play Again" to replay or "Record Again" for a new recording
 
 ### Tips for Best Experience
 - **Microphone Quality**: Use a good quality microphone for better recording results
