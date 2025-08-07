@@ -59,42 +59,13 @@ async def generate_tts(request: TTSRequest):
 @app.post("/upload-audio")
 async def upload_audio_file(audio: UploadFile = File(...)) -> Dict:
     try:
-        print(f"Received file: {audio.filename}")
-        print(f"Content type: {audio.content_type}")
-        
-        allowed_base_types = ['audio/wav', 'audio/mp3', 'audio/webm', 'audio/ogg', 'audio/m4a', 'audio/wave', 'audio/mpeg']
-        
-        is_valid_type = False
-        if not audio.content_type:
-            is_valid_type = True
-        else:
-            for allowed_type in allowed_base_types:
-                if audio.content_type.startswith(allowed_type):
-                    is_valid_type = True
-                    break
-        
-        if not is_valid_type:
-            print(f"Rejected content type: {audio.content_type}")
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Invalid file type: {audio.content_type}. Allowed types: .wav, .mp3, .webm, .ogg, .m4a, .wave"
-            )
-        
-        print("File type validation passed")
-        
-        file_extension = audio.filename.split('.')[-1] if audio.filename and '.' in audio.filename else 'webm'
-        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        unique_filename = f"{uuid.uuid4()}.wav"
         file_path = os.path.join(UPLOAD_DIR, unique_filename)
-        print(f"Saving to: {file_path}")
-        
         content = await audio.read()
-        print(f"File content size: {len(content)} bytes")
-        
         with open(file_path, "wb") as buffer:
             buffer.write(content)
         
         file_size = os.path.getsize(file_path)
-        print(f"File saved successfully, size: {file_size} bytes")
         
         return {
             "success": True,

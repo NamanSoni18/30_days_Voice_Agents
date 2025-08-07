@@ -361,7 +361,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (echoAudioContainer) {
       echoAudioContainer.style.display = "none";
       
-      // Remove upload button if it exists
       const uploadBtn = document.getElementById("uploadAudioBtn");
       if (uploadBtn) {
         uploadBtn.remove();
@@ -375,19 +374,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
   async function uploadAudioFile(audioBlob, uploadBtn) {
     try {
-      // Set loading state
       const btnText = uploadBtn.querySelector('.btn-text');
       const btnLoader = uploadBtn.querySelector('.btn-loader');
       uploadBtn.disabled = true;
       btnText.style.display = 'none';
       btnLoader.style.display = 'inline';
       
-      // Create FormData and append the audio file
       const formData = new FormData();
-      const filename = `recording_${Date.now()}.webm`;
+      const filename = `recording_${Date.now()}.wav`;
       formData.append('audio', audioBlob, filename);
       
-      // Upload the file to the new endpoint
       const response = await fetch('/upload-audio', {
         method: 'POST',
         body: formData
@@ -401,7 +397,6 @@ document.addEventListener("DOMContentLoaded", function () {
           'success'
         );
         
-        // Change button to indicate success
         btnText.textContent = 'Uploaded Successfully';
         btnText.style.display = 'inline';
         btnLoader.style.display = 'none';
@@ -415,7 +410,6 @@ document.addEventListener("DOMContentLoaded", function () {
       console.error('Upload error:', error);
       showEchoMessage(`Upload failed: ${error.message}`, 'error');
       
-      // Reset button state
       const btnText = uploadBtn.querySelector('.btn-text');
       const btnLoader = uploadBtn.querySelector('.btn-loader');
       uploadBtn.disabled = false;
