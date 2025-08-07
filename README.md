@@ -1,6 +1,6 @@
-# 30 Days of Voice Agents - Text-to-Speech & Audio Upload Application
+# 30 Days of Voice Agents - Text-to-Speech & Audio Transcription Application
 
-A modern web application built with FastAPI and Murf AI that features text-to-speech conversion, voice recording, and audio file upload capabilities. This project demonstrates the integration of a Python backend with Murf's text-to-speech API alongside client-side audio recording and server-side file handling.
+A modern web application built with FastAPI, Murf AI, and AssemblyAI that features text-to-speech conversion, voice recording, and audio transcription capabilities. This project demonstrates the integration of a Python backend with AI-powered speech services and client-side audio recording.
 
 ## ✨ Features
 
@@ -9,13 +9,13 @@ A modern web application built with FastAPI and Murf AI that features text-to-sp
 - **Real-time Character Counting**: Visual feedback with color-coded limits (green/yellow/red)
 - **Keyboard Shortcuts**: Press Ctrl+Enter to quickly generate audio
 
-### 🎙️ Audio Recording & Upload
+### 🎙️ Audio Recording & Transcription
 - **Voice Recording**: Record audio directly from your microphone using browser's MediaRecorder API
 - **Real-time Timer**: See recording duration in real-time
 - **Instant Playback**: Automatically plays back your recorded voice
-- **Audio Upload**: Upload recorded audio files to the server with validation
-- **File Management**: Server-side storage with unique filenames and metadata tracking
-- **Supported Formats**: WAV, MP3, WebM (with codecs), OGG, M4A, and WAVE files
+- **Audio Transcription**: Convert recorded speech to text using AssemblyAI
+- **No File Storage**: Direct transcription without saving files on server
+- **Supported Formats**: WAV, MP3, WebM (with codecs), OGG, and other audio formats
 
 ### 🎨 General Features
 - **Modern Web Interface**: Clean, responsive design with separate containers for each feature
@@ -36,7 +36,7 @@ A modern web application built with FastAPI and Murf AI that features text-to-sp
 ├── static/
 │   ├── app.js            # Frontend JavaScript functionality
 │   └── style.css         # CSS styles and responsive design
-├── uploads/               # Directory for uploaded audio files
+├── uploads/               # Directory for uploaded audio files (legacy)
 ├── __pycache__/           # Python bytecode cache
 └── README.md             # Project documentation
 ```
@@ -50,19 +50,21 @@ A modern web application built with FastAPI and Murf AI that features text-to-sp
 4. **Audio Response**: Generated audio URL is returned and played in the browser
 5. **Error Handling**: Comprehensive error messages for various failure scenarios
 
-### Audio Recording & Upload
+### Audio Recording & Transcription
 1. **Microphone Access**: Browser requests microphone permission from user
 2. **Recording**: MediaRecorder API captures audio with real-time timer display
 3. **Audio Processing**: Recorded audio chunks are compiled into a playable blob
-4. **File Upload**: Audio blob is uploaded to `/upload-audio` endpoint with validation
-5. **Server Storage**: Files are saved to `/uploads` directory with unique UUIDs
-6. **Metadata Response**: Server returns file information including size and filename
+4. **Direct Transcription**: Audio blob is sent directly to `/transcribe/file` endpoint
+5. **AssemblyAI Upload**: Backend uploads audio data to AssemblyAI's servers
+6. **Transcription**: AssemblyAI processes the audio and returns text transcription
+7. **Results Display**: Transcribed text is displayed in the UI with status information
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.7 or higher
 - A Murf AI API key ([Get one here](https://murf.ai))
+- An AssemblyAI API key ([Get one here](https://www.assemblyai.com/))
 - Modern web browser with microphone support (Chrome, Firefox, Safari, Edge)
 
 ### Installation
@@ -74,11 +76,12 @@ A modern web application built with FastAPI and Murf AI that features text-to-sp
    pip install -r requirements.txt
    ```
 
-3. **Set up your Murf API key**
+3. **Set up your API keys**
    
    Create a `.env` file in the project root:
    ```bash
    MURF_API_KEY=your_actual_murf_api_key_here
+   ASSEMBLYAI_API_KEY=your_actual_assemblyai_api_key_here
    ```
 
 4. **Run the application**
@@ -98,7 +101,7 @@ A modern web application built with FastAPI and Murf AI that features text-to-sp
 |--------|----------|-------------|
 | `GET` | `/` | Serves the main HTML page |
 | `POST` | `/tts/generate` | Generate speech from text using Murf AI |
-| `POST` | `/upload-audio` | Upload audio files to server with validation |
+| `POST` | `/transcribe/file` | Transcribe audio to text using AssemblyAI |
 | `GET` | `/api/backend` | Test endpoint for backend connectivity |
 | `GET` | `/docs` | Interactive API documentation (Swagger UI) |
 | `GET` | `/redoc` | Alternative API documentation (ReDoc) |
@@ -126,7 +129,7 @@ A modern web application built with FastAPI and Murf AI that features text-to-sp
 }
 ```
 
-### Audio Upload API (`/upload-audio`)
+### Audio Transcription API (`/transcribe/file`)
 
 **Request**: Multipart form data with audio file
 
@@ -143,20 +146,21 @@ A modern web application built with FastAPI and Murf AI that features text-to-sp
 ```json
 {
   "success": true,
-  "filename": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.webm",
-  "original_filename": "recording_1754473144560.webm",
-  "content_type": "audio/webm;codecs=opus",
-  "size": 45632,
-  "message": "Audio file uploaded successfully"
+  "transcription": "Hello, this is the transcribed text from your audio recording.",
+  "message": "Audio transcribed successfully"
 }
 ```
 
 **Response (Error):**
 ```json
 {
-  "detail": "Invalid file type: image/png. Allowed types: .wav, .mp3, .webm, .ogg, .m4a, .wave"
+  "detail": "Transcription error: [specific error message]"
 }
 ```
+
+### Audio Upload API (`/upload-audio`) - Deprecated
+
+**Note**: This endpoint is deprecated in favor of direct transcription without file storage.
   "response": "base64_encoded_audio_data_or_url",
   "text": "Hello, this is a test message"
 }
@@ -176,6 +180,7 @@ A modern web application built with FastAPI and Murf AI that features text-to-sp
 ### Backend
 - **[FastAPI](https://fastapi.tiangolo.com/)**: Modern, fast web framework for building APIs with Python
 - **[Murf AI SDK](https://murf.ai)**: Official Python SDK for text-to-speech conversion
+- **[AssemblyAI](https://www.assemblyai.com/)**: AI-powered speech-to-text transcription service
 - **[Uvicorn](https://www.uvicorn.org/)**: Lightning-fast ASGI server for production
 - **[Jinja2](https://jinja.palletsprojects.com/)**: Template engine for dynamic HTML rendering
 - **[python-dotenv](https://pypi.org/project/python-dotenv/)**: Environment variable management
@@ -221,6 +226,7 @@ python-multipart==0.0.6   # For handling form data and file uploads
 python-dotenv==1.0.0      # Environment variable management
 murf==2.0.0               # Official Murf AI Python SDK
 requests==2.31.0          # HTTP library for API calls
+assemblyai==0.17.0        # AssemblyAI Python SDK for transcription
 ```
 
 ## 🔧 Configuration
@@ -232,13 +238,23 @@ Create a `.env` file in the project root with the following variables:
 ```bash
 # Required: Your Murf AI API key
 MURF_API_KEY=your_actual_murf_api_key_here
+
+# Required: Your AssemblyAI API key
+ASSEMBLYAI_API_KEY=your_actual_assemblyai_api_key_here
 ```
 
-### Getting Your Murf API Key
+### Getting Your API Keys
 
+#### Murf AI API Key
 1. Sign up at [Murf.ai](https://murf.ai)
 2. Navigate to your account settings or API section
 3. Generate or copy your API key
+4. Add it to your `.env` file
+
+#### AssemblyAI API Key
+1. Sign up at [AssemblyAI.com](https://www.assemblyai.com/)
+2. Go to your dashboard
+3. Copy your API key
 4. Add it to your `.env` file
 
 ## 🚀 Development
@@ -321,15 +337,16 @@ The application includes console logging for debugging. Check the browser consol
 5. **Play Audio**: Use the built-in audio controls to play the generated speech
 6. **Error Handling**: Any errors will be displayed with helpful messages
 
-### Audio Recording & Upload
+### Audio Recording & Transcription
 1. **Start Recording**: Click "Start Recording" button
 2. **Grant Permission**: Allow microphone access when prompted by your browser
 3. **Record Audio**: Speak into your microphone while watching the real-time timer
 4. **Stop Recording**: Click "Stop Recording" when finished
 5. **Automatic Playback**: Your recorded voice will automatically play back
-6. **Upload to Server**: Click "Upload to Server" to save the audio file
-7. **Server Processing**: File is validated, saved with unique UUID, and metadata returned
-8. **Additional Controls**: Use "Play Again" to replay or "Record Again" for a new recording
+6. **Transcribe Audio**: Click "Transcribe Audio" to convert speech to text
+7. **AI Processing**: Audio is sent to AssemblyAI for transcription processing
+8. **View Results**: Transcribed text appears below with status information
+9. **Additional Controls**: Use "Play Again" to replay or "Record Again" for a new recording
 
 ### Tips for Best Experience
 - **Microphone Quality**: Use a good quality microphone for better recording results
@@ -354,8 +371,9 @@ This project is open source and available under the [MIT License](LICENSE).
 **Built with ❤️ using FastAPI, Murf AI, and Web Audio APIs**
 
 ### 🎯 Project Highlights
-- **Dual Functionality**: Both AI-powered text-to-speech and real-time voice recording
+- **Dual AI Integration**: Both Murf AI for text-to-speech and AssemblyAI for speech-to-text
 - **Modern Web Technologies**: Leverages latest browser APIs for audio processing
+- **No File Storage**: Direct audio transcription without server-side file storage
 - **Production Ready**: Comprehensive error handling and browser compatibility
 - **User-Friendly**: Intuitive interface with clear visual feedback
 - **Open Source**: MIT licensed and open for contributions

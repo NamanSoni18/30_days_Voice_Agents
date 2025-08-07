@@ -329,21 +329,21 @@ document.addEventListener("DOMContentLoaded", function () {
       const durationText = duration ? ` (${duration}s)` : "";
       showEchoMessage(`Recording complete${durationText}! Your echo is ready to play.`, "success");
       
-      // Add upload button if it doesn't exist
-      let uploadBtn = document.getElementById("uploadAudioBtn");
-      if (!uploadBtn && audioBlob) {
-        uploadBtn = document.createElement("button");
-        uploadBtn.id = "uploadAudioBtn";
-        uploadBtn.className = "btn primary";
-        uploadBtn.innerHTML = '<span class="btn-text">Upload to Server</span><span class="btn-loader" style="display: none">Uploading...</span>';
+      // Add transcribe button if it doesn't exist
+      let transcribeBtn = document.getElementById("transcribeAudioBtn");
+      if (!transcribeBtn && audioBlob) {
+        transcribeBtn = document.createElement("button");
+        transcribeBtn.id = "transcribeAudioBtn";
+        transcribeBtn.className = "btn primary";
+        transcribeBtn.innerHTML = '<span class="btn-text">Transcribe Audio</span><span class="btn-loader" style="display: none">Transcribing...</span>';
         
         const audioActions = echoAudioContainer.querySelector('.audio-actions');
         if (audioActions) {
-          audioActions.appendChild(uploadBtn);
+          audioActions.appendChild(transcribeBtn);
         }
         
-        uploadBtn.addEventListener("click", function() {
-          uploadAudioFile(audioBlob, uploadBtn);
+        transcribeBtn.addEventListener("click", function() {
+          transcribeAudioFile(audioBlob, transcribeBtn);
         });
       }
       
@@ -361,22 +361,28 @@ document.addEventListener("DOMContentLoaded", function () {
     if (echoAudioContainer) {
       echoAudioContainer.style.display = "none";
       
-      const uploadBtn = document.getElementById("uploadAudioBtn");
-      if (uploadBtn) {
-        uploadBtn.remove();
+      const transcribeBtn = document.getElementById("transcribeAudioBtn");
+      if (transcribeBtn) {
+        transcribeBtn.remove();
       }
     }
     if (echoAudioPlayer && echoAudioPlayer.src) {
       URL.revokeObjectURL(echoAudioPlayer.src);
       echoAudioPlayer.src = "";
     }
+    
+    // Hide transcription container
+    const transcriptionContainer = document.getElementById("transcriptionContainer");
+    if (transcriptionContainer) {
+      transcriptionContainer.style.display = "none";
+    }
   }
 
-  async function uploadAudioFile(audioBlob, uploadBtn) {
+  async function transcribeAudioFile(audioBlob, transcribeBtn) {
     try {
-      const btnText = uploadBtn.querySelector('.btn-text');
-      const btnLoader = uploadBtn.querySelector('.btn-loader');
-      uploadBtn.disabled = true;
+      const btnText = transcribeBtn.querySelector('.btn-text');
+      const btnLoader = transcribeBtn.querySelector('.btn-loader');
+      transcribeBtn.disabled = true;
       btnText.style.display = 'none';
       btnLoader.style.display = 'inline';
       
@@ -384,7 +390,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const filename = `recording_${Date.now()}.wav`;
       formData.append('audio', audioBlob, filename);
       
-      const response = await fetch('/upload-audio', {
+      const response = await fetch('/transcribe/file', {
         method: 'POST',
         body: formData
       });
@@ -392,37 +398,50 @@ document.addEventListener("DOMContentLoaded", function () {
       const data = await response.json();
       
       if (response.ok && data.success) {
-        showEchoMessage(
-          `Upload successful! File: ${data.filename} (${formatFileSize(data.size)})`, 
-          'success'
-        );
+        showTranscription(data);
+        showEchoMessage('Transcription completed successfully!', 'success');
         
-        btnText.textContent = 'Uploaded Successfully';
+        btnText.textContent = 'Transcribed Successfully';
         btnText.style.display = 'inline';
         btnLoader.style.display = 'none';
-        uploadBtn.style.backgroundColor = '#27ae60';
-        uploadBtn.disabled = true;
+        transcribeBtn.style.backgroundColor = '#27ae60';
+        transcribeBtn.disabled = true;
       } else {
-        throw new Error(data.detail || 'Upload failed');
+        throw new Error(data.detail || 'Transcription failed');
       }
       
     } catch (error) {
-      console.error('Upload error:', error);
-      showEchoMessage(`Upload failed: ${error.message}`, 'error');
+      console.error('Transcription error:', error);
+      showEchoMessage(`Transcription failed: ${error.message}`, 'error');
       
-      const btnText = uploadBtn.querySelector('.btn-text');
-      const btnLoader = uploadBtn.querySelector('.btn-loader');
-      uploadBtn.disabled = false;
+      const btnText = transcribeBtn.querySelector('.btn-text');
+      const btnLoader = transcribeBtn.querySelector('.btn-loader');
+      transcribeBtn.disabled = false;
       btnText.style.display = 'inline';
       btnLoader.style.display = 'none';
     }
   }
 
-  function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  function showTranscription(data) {
+    const transcriptionContainer = document.getElementById("transcriptionContainer");
+    const transcriptionText = document.getElementById("transcriptionText");
+    const transcriptionDetails = document.getElementById("transcriptionDetails");
+    
+    if (transcriptionContainer && transcriptionText) {
+      // Display the transcription text
+      transcriptionText.textContent = data.transcription || "No transcription available";
+      
+      // Simple status message
+      if (transcriptionDetails) {
+        transcriptionDetails.innerHTML = '<span>Status: Completed</span>';
+      }
+      
+      // Show the container
+      transcriptionContainer.style.display = "block";
+      
+      // Scroll to transcription
+      transcriptionContainer.scrollIntoView({ behavior: "smooth" });
+    }
   }
+
 });

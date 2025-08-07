@@ -9,6 +9,7 @@ import uuid
 from typing import Dict
 from dotenv import load_dotenv
 import uvicorn
+import assemblyai as aai
 
 load_dotenv()
 
@@ -18,11 +19,6 @@ templates = Jinja2Templates(directory="templates")
 
 class TTSRequest(BaseModel):
     text: str
-
-# Create uploads directory if it doesn't exist
-UPLOAD_DIR = "uploads"
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR)
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -56,28 +52,38 @@ async def generate_tts(request: TTSRequest):
         raise HTTPException(status_code=500, detail="No audio URL returned.")
     return {"audio_url": audio_url}
 
-@app.post("/upload-audio")
-async def upload_audio_file(audio: UploadFile = File(...)) -> Dict:
+@app.post("/transcribe/file")
+async def transcribe_audio_file(audio: UploadFile = File(...)) -> Dict:
     try:
-        unique_filename = f"{uuid.uuid4()}.wav"
-        file_path = os.path.join(UPLOAD_DIR, unique_filename)
-        content = await audio.read()
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
+        api_key = os.getenv("ASSEMBLYAI_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="AssemblyAI API key not set. Please set ASSEMBLYAI_API_KEY in your environment.")
+        audio_content = await audio.read()
+        upload_headers = {
+            "authorization": api_key,
+        }
         
-        file_size = os.path.getsize(file_path)
-        
+        upload_response = requests.post(
+            "https://api.assemblyai.com/v2/upload",
+            headers=upload_headers,
+            data=audio_content
+        )
+        if upload_response.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Audio upload failed: {upload_response.text}")
+        upload_url = upload_response.json()["upload_url"]
+        aai.settings.api_key = api_key
+        transcriber = aai.Transcriber()
+        transcript = transcriber.transcribe(upload_url)
+        if transcript.status == aai.TranscriptStatus.error:
+            raise HTTPException(status_code=500, detail=f"Transcription failed: {transcript.error}")
         return {
             "success": True,
-            "filename": unique_filename,
-            "original_filename": audio.filename,
-            "content_type": audio.content_type,
-            "size": file_size,
-            "message": "Audio file uploaded successfully"
+            "transcription": transcript.text,
+            "message": "Audio transcribed successfully"
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
