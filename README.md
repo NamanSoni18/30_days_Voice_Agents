@@ -1,63 +1,52 @@
-# 30 Days of Voice Agents - Text-to-Speech & Audio Transcription Application
+# 30 Days of Voice Agents - Echo Bot Application
 
-A modern web application built with FastAPI, Murf AI, and AssemblyAI that features text-to-speech conversion, voice recording, and audio transcription capabilities. This project demonstrates the integration of a Python backend with AI-powered speech services and client-side audio recording.
+A modern web application built with FastAPI, Murf AI, and AssemblyAI that creates an intelligent "Echo Bot" - record your voice, and the AI will echo it back using Murf's natural-sounding voices! This project demonstrates seamless integration between speech-to-text and text-to-speech AI services.
 
 ## ✨ Features
 
-### 🎤 Text-to-Speech Generator
-- **Text-to-Speech Conversion**: Convert any text (up to 500 characters) to natural-sounding speech using Murf AI
-- **Real-time Character Counting**: Visual feedback with color-coded limits (green/yellow/red)
-- **Keyboard Shortcuts**: Press Ctrl+Enter to quickly generate audio
-
-### 🎙️ Audio Recording & Transcription
+### 🎙️ Intelligent Echo Bot
 - **Voice Recording**: Record audio directly from your microphone using browser's MediaRecorder API
-- **Real-time Timer**: See recording duration in real-time
-- **Instant Playback**: Automatically plays back your recorded voice
-- **Audio Transcription**: Convert recorded speech to text using AssemblyAI
-- **No File Storage**: Direct transcription without saving files on server
-- **Supported Formats**: WAV, MP3, WebM (with codecs), OGG, and other audio formats
+- **Real-time Timer**: See recording duration with a visual recording indicator
+- **Instant Playback**: Automatically plays back your original recorded voice
+- **AI-Powered Transcription**: Convert your speech to text using AssemblyAI's advanced speech recognition
+- **AI Voice Echo**: Generate natural-sounding echo using Murf AI's text-to-speech with the "en-IN-aarav" voice
+- **Complete Voice Loop**: Record → Transcribe → Generate → Play back in one seamless flow
 
-### 🎨 General Features
-- **Modern Web Interface**: Clean, responsive design with separate containers for each feature
+### 🎨 Technical Features
+- **Modern Web Interface**: Clean, responsive design with intuitive controls
 - **FastAPI Backend**: High-performance async Python web framework
-- **Real-time Feedback**: Loading states and comprehensive error handling
+- **Real-time Feedback**: Loading states, recording indicators, and comprehensive error handling
 - **Audio Playback**: Built-in HTML5 audio players with standard controls
 - **Cross-browser Support**: Works on Chrome, Firefox, Safari, and other modern browsers
 - **Environment-based Configuration**: Secure API key management
+- **No File Storage**: Direct audio processing without saving files on server
 
 ## 📁 Project Structure
 
 ```
 30 Days of Voice Agents/
-├── main.py                 # FastAPI backend server
+├── main.py                 # FastAPI backend server with Echo Bot endpoint
 ├── requirements.txt        # Python dependencies
 ├── templates/
-│   └── index.html         # Main HTML page with Jinja2 templating
+│   └── index.html         # Main HTML page with Echo Bot interface
 ├── static/
-│   ├── app.js            # Frontend JavaScript functionality
+│   ├── app.js            # Frontend JavaScript for recording and playback
 │   └── style.css         # CSS styles and responsive design
-├── uploads/               # Directory for uploaded audio files (legacy)
 ├── __pycache__/           # Python bytecode cache
 └── README.md             # Project documentation
 ```
 
 ## 🔧 How It Works
 
-### Text-to-Speech Generator
-1. **Frontend**: User enters text in the web interface (up to 500 characters)
-2. **API Request**: JavaScript sends a POST request to `/tts/generate` with the text
-3. **Murf Integration**: FastAPI backend calls Murf AI's text-to-speech API via HTTP requests
-4. **Audio Response**: Generated audio URL is returned and played in the browser
-5. **Error Handling**: Comprehensive error messages for various failure scenarios
-
-### Audio Recording & Transcription
-1. **Microphone Access**: Browser requests microphone permission from user
-2. **Recording**: MediaRecorder API captures audio with real-time timer display
-3. **Audio Processing**: Recorded audio chunks are compiled into a playable blob
-4. **Direct Transcription**: Audio blob is sent directly to `/transcribe/file` endpoint
-5. **AssemblyAI Upload**: Backend uploads audio data to AssemblyAI's servers
-6. **Transcription**: AssemblyAI processes the audio and returns text transcription
-7. **Results Display**: Transcribed text is displayed in the UI with status information
+### Echo Bot Workflow
+1. **Recording**: User clicks "Start Recording" and speaks into microphone
+2. **Audio Capture**: Browser's MediaRecorder API captures audio with real-time timer
+3. **Playback**: Original recording is immediately played back to user
+4. **AI Processing**: User clicks "Echo with Murf Voice" to trigger AI processing
+5. **Transcription**: FastAPI backend sends audio to AssemblyAI for speech-to-text conversion
+6. **Voice Generation**: Transcribed text is sent to Murf AI to generate natural speech using "en-IN-aarav" voice
+7. **Echo Playback**: AI-generated audio is played back, completing the echo cycle
+8. **Error Handling**: Comprehensive error messages for various scenarios (API failures, no speech detected, etc.)
 
 ## 🚀 Quick Start
 
@@ -93,43 +82,19 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that featur
    
    Navigate to: `http://127.0.0.1:8000`
    
-   **Important**: When using the Echo Bot feature, your browser will request microphone permission. Click "Allow" to enable voice recording functionality.
+   **Important**: Your browser will request microphone permission. Click "Allow" to enable voice recording functionality.
 
 ## 📡 API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/` | Serves the main HTML page |
-| `POST` | `/tts/generate` | Generate speech from text using Murf AI |
-| `POST` | `/transcribe/file` | Transcribe audio to text using AssemblyAI |
+| `GET` | `/` | Serves the main Echo Bot HTML page |
+| `POST` | `/tts/echo` | Complete echo workflow: transcribe audio and generate Murf voice response |
 | `GET` | `/api/backend` | Test endpoint for backend connectivity |
 | `GET` | `/docs` | Interactive API documentation (Swagger UI) |
 | `GET` | `/redoc` | Alternative API documentation (ReDoc) |
 
-### Text-to-Speech API (`/tts/generate`)
-
-**Request Body:**
-```json
-{
-  "text": "Hello, this is a test message"
-}
-```
-
-**Response (Success):**
-```json
-{
-  "audio_url": "https://murf.ai/audio/generated-audio-file-url"
-}
-```
-
-**Response (Error):**
-```json
-{
-  "detail": "Error message describing what went wrong"
-}
-```
-
-### Audio Transcription API (`/transcribe/file`)
+### Echo Bot API (`/tts/echo`)
 
 **Request**: Multipart form data with audio file
 
@@ -146,44 +111,42 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that featur
 ```json
 {
   "success": true,
-  "transcription": "Hello, this is the transcribed text from your audio recording.",
-  "message": "Audio transcribed successfully"
+  "transcription": "Hello, this is the transcribed text from your recording.",
+  "audio_url": "https://murf.ai/audio/generated-echo-file-url",
+  "message": "Audio echoed successfully with Murf voice"
 }
 ```
 
 **Response (Error):**
 ```json
 {
-  "detail": "Transcription error: [specific error message]"
+  "success": false,
+  "message": "Specific error message describing what went wrong",
+  "transcription": "",
+  "audio_url": null
 }
 ```
 
-### Audio Upload API (`/upload-audio`) - Deprecated
+### Backend Test API (`/api/backend`)
 
-**Note**: This endpoint is deprecated in favor of direct transcription without file storage.
-  "response": "base64_encoded_audio_data_or_url",
-  "text": "Hello, this is a test message"
-}
-```
-
-**Response (Error):**
+**Response:**
 ```json
 {
-  "detail": "Error message describing what went wrong"
+  "message": "🚀 This message is coming from FastAPI backend!",
+  "status": "success"
 }
 ```
-
-> **Note**: The application currently uses the "en-US-natalie" voice from Murf AI.
 
 ## 🛠️ Technologies Used
 
 ### Backend
 - **[FastAPI](https://fastapi.tiangolo.com/)**: Modern, fast web framework for building APIs with Python
-- **[Murf AI SDK](https://murf.ai)**: Official Python SDK for text-to-speech conversion
 - **[AssemblyAI](https://www.assemblyai.com/)**: AI-powered speech-to-text transcription service
+- **[Murf AI](https://murf.ai)**: Text-to-speech API for natural voice generation (using "en-IN-aarav" voice)
 - **[Uvicorn](https://www.uvicorn.org/)**: Lightning-fast ASGI server for production
 - **[Jinja2](https://jinja.palletsprojects.com/)**: Template engine for dynamic HTML rendering
 - **[python-dotenv](https://pypi.org/project/python-dotenv/)**: Environment variable management
+- **[requests](https://docs.python-requests.org/)**: HTTP library for API communication
 
 ### Frontend
 - **HTML5 & CSS3**: Modern web standards with responsive design
@@ -194,25 +157,17 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that featur
 
 ## 🎨 Frontend Features
 
-### Text-to-Speech Section
+### Echo Bot Interface
 - **Responsive Design**: Works seamlessly on desktop, tablet, and mobile devices
-- **Real-time Character Counter**: Visual feedback with color-coded limits (green/yellow/red)
-- **Loading States**: Visual feedback during audio generation
-- **Keyboard Shortcuts**: Ctrl+Enter to quickly generate audio
-
-### Echo Bot Section
+- **Recording Controls**: Start/Stop recording buttons with visual feedback
 - **Real-time Recording Timer**: Shows recording duration (0s, 1s, 2s...)
 - **Visual Recording Indicator**: Animated pulsing dot during recording
-- **Microphone Permission Handling**: Clear error messages for permission issues
-- **Audio Format Support**: Multiple codec support (WebM, MP4, OGG, WAV)
-- **Resource Management**: Automatic cleanup of microphone and audio resources
-
-### General UI Features
-- **Dual Container Layout**: Separate, visually distinct sections for each feature
+- **Audio Playback Controls**: Built-in HTML5 audio players for both original and echo audio
+- **Transcription Display**: Shows transcribed text in a clean, readable format
+- **Loading States**: Visual feedback during AI processing
 - **Error Handling**: User-friendly error messages for various scenarios
-- **Audio Controls**: Built-in HTML5 audio players with standard controls
-- **Smooth Animations**: CSS transitions and keyframe animations
-- **Cross-browser Compatibility**: Tested on major modern browsers
+- **Microphone Permission Handling**: Clear guidance for granting microphone access
+- **Audio Format Support**: Automatic format selection based on browser capabilities
 
 ## 📦 Dependencies
 
@@ -241,6 +196,9 @@ MURF_API_KEY=your_actual_murf_api_key_here
 
 # Required: Your AssemblyAI API key
 ASSEMBLYAI_API_KEY=your_actual_assemblyai_api_key_here
+
+# Optional: Murf voice ID (defaults to "en-IN-aarav")
+MURF_VOICE_ID=en-IN-aarav
 ```
 
 ### Getting Your API Keys
@@ -278,26 +236,43 @@ FastAPI automatically generates interactive API documentation:
 
 ### Common Issues
 
-#### Text-to-Speech Related
-1. **"MURF_API_KEY environment variable not set"**
+#### Echo Bot Related
+1. **"MURF_API_KEY environment variable not set" or "AssemblyAI API key not set"**
    - Make sure you have created a `.env` file in the project root
-   - Verify your API key is correctly set in the `.env` file
+   - Verify your API keys are correctly set in the `.env` file
+   - Ensure your API keys are not set to placeholder values like "your_murf_api_key_here"
 
 2. **"Could not connect to backend"**
    - Ensure the FastAPI server is running on `http://127.0.0.1:8000`
    - Check the browser console for detailed error messages
 
-3. **Audio generation fails**
-   - Verify your Murf API key is valid and has sufficient credits
-   - Check that your text doesn't exceed the 500 character limit
-
-#### Echo Bot Related
-4. **"Microphone access denied"**
+3. **"Microphone access denied"**
    - Click "Allow" when the browser requests microphone permission
    - In Chrome: Go to Settings > Privacy and Security > Site Settings > Microphone
    - Ensure the site has permission to access your microphone
 
-5. **"No microphone found"**
+4. **"No microphone found"**
+   - Check that your microphone is properly connected
+   - Verify the microphone is working in other applications
+   - Try refreshing the page and granting permission again
+
+5. **"No speech detected in the audio"**
+   - Ensure you're speaking clearly and loudly enough during recording
+   - Check that your microphone is not muted
+   - Try recording in a quieter environment
+
+6. **Recording not working**
+   - Ensure you're using a modern browser (Chrome 49+, Firefox 25+, Safari 14.1+)
+   - Check browser console for detailed error messages
+   - Try using a different browser if issues persist
+
+7. **"Your browser doesn't support audio recording"**
+   - Update your browser to the latest version
+   - Use Chrome, Firefox, Safari, or Edge for best compatibility
+
+8. **Murf API errors**
+   - Verify your Murf API key is valid and has sufficient credits
+   - Check that your Murf account is active and in good standing
    - Check that your microphone is properly connected
    - Verify the microphone is working in other applications
    - Try refreshing the page and granting permission again
@@ -329,30 +304,26 @@ The application includes console logging for debugging. Check the browser consol
 
 ## 📝 Usage
 
-### Text-to-Speech Generator
-1. **Enter Text**: Type or paste your text into the textarea (max 500 characters)
-2. **Character Counter**: Watch the real-time character count with color-coded feedback
-3. **Generate Audio**: Click "Generate Audio" or press Ctrl+Enter
-4. **Loading State**: The button shows "Generating..." while processing
-5. **Play Audio**: Use the built-in audio controls to play the generated speech
-6. **Error Handling**: Any errors will be displayed with helpful messages
-
-### Audio Recording & Transcription
-1. **Start Recording**: Click "Start Recording" button
+### Echo Bot
+1. **Start Recording**: Click "Start Recording" button to begin capturing audio
 2. **Grant Permission**: Allow microphone access when prompted by your browser
-3. **Record Audio**: Speak into your microphone while watching the real-time timer
-4. **Stop Recording**: Click "Stop Recording" when finished
-5. **Automatic Playback**: Your recorded voice will automatically play back
-6. **Transcribe Audio**: Click "Transcribe Audio" to convert speech to text
-7. **AI Processing**: Audio is sent to AssemblyAI for transcription processing
-8. **View Results**: Transcribed text appears below with status information
-9. **Additional Controls**: Use "Play Again" to replay or "Record Again" for a new recording
+3. **Speak Clearly**: Talk into your microphone while watching the real-time timer and recording indicator
+4. **Stop Recording**: Click "Stop Recording" when you're finished speaking
+5. **Listen to Original**: Your recorded voice will automatically play back through the audio player
+6. **Generate Echo**: Click "Echo with Murf Voice" to process your recording through AI
+7. **AI Processing**: 
+   - Your audio is transcribed to text using AssemblyAI
+   - The transcribed text is converted to speech using Murf AI's "en-IN-aarav" voice
+8. **Listen to Echo**: The AI-generated echo will play automatically, and you can see the transcribed text
+9. **Start Over**: Use "Record Again" to create a new recording
 
 ### Tips for Best Experience
-- **Microphone Quality**: Use a good quality microphone for better recording results
-- **Quiet Environment**: Record in a quiet space to minimize background noise
-- **Browser Permission**: Always allow microphone access for Echo Bot to work
+- **Microphone Quality**: Use a good quality microphone for better recording and transcription results
+- **Quiet Environment**: Record in a quiet space to minimize background noise for better transcription accuracy
+- **Clear Speech**: Speak clearly and at a moderate pace for optimal transcription results
+- **Browser Permission**: Always allow microphone access for the Echo Bot to work properly
 - **Audio Format**: The app automatically selects the best supported audio format for your browser
+- **Internet Connection**: Ensure stable internet connection for AI processing
 
 ## 🤝 Contributing
 
@@ -368,12 +339,13 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-**Built with ❤️ using FastAPI, Murf AI, and Web Audio APIs**
+**Built with ❤️ using FastAPI, Murf AI, and AssemblyAI**
 
 ### 🎯 Project Highlights
-- **Dual AI Integration**: Both Murf AI for text-to-speech and AssemblyAI for speech-to-text
-- **Modern Web Technologies**: Leverages latest browser APIs for audio processing
-- **No File Storage**: Direct audio transcription without server-side file storage
+- **Seamless AI Integration**: Combines AssemblyAI's speech-to-text with Murf AI's text-to-speech for a complete voice loop
+- **Modern Web Technologies**: Leverages latest browser APIs for audio recording and processing
+- **No File Storage**: Direct audio processing without server-side file storage for better performance and privacy
 - **Production Ready**: Comprehensive error handling and browser compatibility
-- **User-Friendly**: Intuitive interface with clear visual feedback
-- **Open Source**: MIT licensed and open for contributions
+- **User-Friendly**: Intuitive interface with clear visual feedback and real-time recording indicators
+- **Voice Quality**: Uses Murf AI's high-quality "en-IN-aarav" voice for natural-sounding echoes
+- **Real-time Feedback**: Live recording timer and visual indicators enhance user experience

@@ -12,45 +12,7 @@
         <h1>Murf AI Voice Agents</h1>
       </header>
 
-      <!-- Text to Speech Section -->
-      <main class="tts-section">
-        <div class="card">
-          <h2>Text to Speech Generator</h2>
-          <div class="form-group">
-            <label for="textInput">Enter text to convert to speech:</label>
-            <textarea
-              id="textInput"
-              name="text"
-              placeholder="Type your text here..."
-              rows="4"
-              maxlength="500"
-            ></textarea>
-            <div class="char-counter">
-              <span id="charCount">0</span>/500 characters
-            </div>
-          </div>
-
-          <div class="controls">
-            <button id="generateBtn" class="btn primary">
-              <span class="btn-text">Generate Audio</span>
-              <span class="btn-loader" style="display: none"
-                >Generating...</span
-              >
-            </button>
-          </div>
-          <div id="messageDisplay" class="message-display"></div>
-          <div
-            id="audioContainer"
-            class="audio-container"
-            style="display: none"
-          >
-            <h3>Generated Audio:</h3>
-            <audio id="audioPlayer" controls>
-              Your browser does not support the audio element.
-            </audio>
-          </div>
-        </div>
-      </main>
+      
 
       <main class="echo-section">
         <div class="card">
@@ -82,15 +44,17 @@
               Your browser does not support the audio element.
             </audio>
             <div class="audio-actions">
-              <button id="playAgainBtn" class="btn secondary">Play Again</button>
               <button id="recordAgainBtn" class="btn primary">Record Again</button>
+              <button id="echoMurfBtn" class="btn primary">Echo with Murf Voice</button>
             </div>
           </div>
           
-          <div id="transcriptionContainer" class="transcription-container" style="display: none;">
-            <h3>Transcription:</h3>
-            <div id="transcriptionText" class="transcription-text"></div>
-            <div id="transcriptionDetails" class="transcription-details"></div>
+          <div id="murfEchoContainer" class="audio-container" style="display: none;">
+            <h3>Murf Echo Audio:</h3>
+            <div id="murfTranscriptionText" class="transcription-text" style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;"></div>
+            <audio id="murfEchoPlayer" controls>
+              Your browser does not support the audio element.
+            </audio>
           </div>
         </div>
       </main>

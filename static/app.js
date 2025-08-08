@@ -1,125 +1,7 @@
 document.addEventListener("DOMContentLoaded", function () {
   console.log("Voice Agents App Loaded!");
 
-  const textInput = document.getElementById("textInput");
-  const generateBtn = document.getElementById("generateBtn");
-  const messageDisplay = document.getElementById("messageDisplay");
-  const audioContainer = document.getElementById("audioContainer");
-  const audioPlayer = document.getElementById("audioPlayer");
-  const charCount = document.getElementById("charCount");
-  const btnText = document.querySelector(".btn-text");
-  const btnLoader = document.querySelector(".btn-loader");
-  
-  textInput.addEventListener("input", function () {
-    const count = textInput.value.length;
-    charCount.textContent = count;
-
-    if (count > 450) {
-      charCount.style.color = "#e74c3c";
-    } else if (count > 350) {
-      charCount.style.color = "#f39c12";
-    } else {
-      charCount.style.color = "#27ae60";
-    }
-  });
-
-  generateBtn.addEventListener("click", async function () {
-    const text = textInput.value.trim();
-
-    if (!text) {
-      showMessage("Please enter some text to convert to speech.", "error");
-      return;
-    }
-
-    if (text.length > 500) {
-      showMessage(
-        "Text is too long. Please keep it under 500 characters.",
-        "error"
-      );
-      return;
-    }
-
-    setLoadingState(true);
-    hideAudio();
-
-    try {
-      const response = await fetch("/tts/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: text,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.audio_url) {
-        showMessage("Audio generated successfully!", "success");
-        showAudio(data.audio_url, data.text);
-      } else {
-        showMessage(
-          `Error: ${data.detail || "Failed to generate audio"}`,
-          "error"
-        );
-      }
-    } catch (error) {
-      console.error("Error:", error);
-      showMessage("Could not connect to backend. Please try again.", "error");
-    } finally {
-      setLoadingState(false);
-    }
-  });
-
-  function setLoadingState(loading) {
-    if (loading) {
-      generateBtn.disabled = true;
-      btnText.style.display = "none";
-      btnLoader.style.display = "inline";
-    } else {
-      generateBtn.disabled = false;
-      btnText.style.display = "inline";
-      btnLoader.style.display = "none";
-    }
-  }
-
-  function showMessage(message, type) {
-    messageDisplay.style.display = "flex";
-
-    messageDisplay.innerHTML = `
-        <div class="${type}-message">
-            ${message}
-        </div>
-    `;
-
-    if (type === "success") {
-      setTimeout(() => {
-        messageDisplay.innerHTML = "";
-        messageDisplay.style.display = "none";
-      }, 5000);
-    }
-  }
-
-  function showAudio(audioUrl, text) {
-    audioPlayer.src = audioUrl;
-    audioContainer.style.display = "block";
-
-    // Scroll to audio container
-    audioContainer.scrollIntoView({ behavior: "smooth" });
-  }
-
-  function hideAudio() {
-    audioContainer.style.display = "none";
-    audioPlayer.src = "";
-  }
-
-  // Enable Enter key to generate audio
-  textInput.addEventListener("keydown", function (event) {
-    if (event.ctrlKey && event.key === "Enter") {
-      generateBtn.click();
-    }
-  });
+  // Removed TTS text generation functionality
   
   let mediaRecorder;
   let audioChunks = [];
@@ -134,8 +16,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const echoMessageDisplay = document.getElementById("echoMessageDisplay");
   const echoAudioContainer = document.getElementById("echoAudioContainer");
   const echoAudioPlayer = document.getElementById("echoAudioPlayer");
-  const playAgainBtn = document.getElementById("playAgainBtn");
   const recordAgainBtn = document.getElementById("recordAgainBtn");
+  const echoMurfBtn = document.getElementById("echoMurfBtn");
+  const murfEchoContainer = document.getElementById("murfEchoContainer");
+  const murfEchoPlayer = document.getElementById("murfEchoPlayer");
+  const murfTranscriptionText = document.getElementById("murfTranscriptionText");
+
+  let currentAudioBlob = null;
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     if (startRecordingBtn) {
@@ -147,17 +34,22 @@ document.addEventListener("DOMContentLoaded", function () {
       startRecordingBtn.addEventListener("click", startRecording);
       stopRecordingBtn.addEventListener("click", stopRecording);
       
-      if (playAgainBtn) {
-        playAgainBtn.addEventListener("click", function() {
-          echoAudioPlayer.currentTime = 0;
-          echoAudioPlayer.play().catch(e => console.log("Play failed:", e));
-        });
-      }
       
       if (recordAgainBtn) {
         recordAgainBtn.addEventListener("click", function() {
           hideEchoAudio();
+          hideMurfEcho();
           resetRecordingState();
+        });
+      }
+      
+      if (echoMurfBtn) {
+        echoMurfBtn.addEventListener("click", function() {
+          if (currentAudioBlob) {
+            echoWithMurfVoice(currentAudioBlob);
+          } else {
+            showEchoMessage("No audio available. Please record something first.", "error");
+          }
         });
       }
     }
@@ -287,11 +179,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function getSupportedMimeType() {
     const mimeTypes = [
-      'audio/webm;codecs=opus',
       'audio/webm',
-      'audio/mp4',
-      'audio/ogg;codecs=opus',
-      'audio/wav'
     ];
     
     for (let mimeType of mimeTypes) {
@@ -323,28 +211,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function showEchoAudio(audioUrl, duration, audioBlob) {
     if (echoAudioPlayer && echoAudioContainer) {
+      // Store the audio blob for Murf echo functionality
+      currentAudioBlob = audioBlob;
+      
       echoAudioPlayer.src = audioUrl;
       echoAudioContainer.style.display = "block";
       
       const durationText = duration ? ` (${duration}s)` : "";
       showEchoMessage(`Recording complete${durationText}! Your echo is ready to play.`, "success");
       
-      // Add transcribe button if it doesn't exist
-      let transcribeBtn = document.getElementById("transcribeAudioBtn");
-      if (!transcribeBtn && audioBlob) {
-        transcribeBtn = document.createElement("button");
-        transcribeBtn.id = "transcribeAudioBtn";
-        transcribeBtn.className = "btn primary";
-        transcribeBtn.innerHTML = '<span class="btn-text">Transcribe Audio</span><span class="btn-loader" style="display: none">Transcribing...</span>';
-        
-        const audioActions = echoAudioContainer.querySelector('.audio-actions');
-        if (audioActions) {
-          audioActions.appendChild(transcribeBtn);
-        }
-        
-        transcribeBtn.addEventListener("click", function() {
-          transcribeAudioFile(audioBlob, transcribeBtn);
-        });
+      // Enable the echo with Murf button
+      if (echoMurfBtn) {
+        echoMurfBtn.disabled = false;
       }
       
       echoAudioContainer.scrollIntoView({ behavior: "smooth" });
@@ -371,76 +249,82 @@ document.addEventListener("DOMContentLoaded", function () {
       echoAudioPlayer.src = "";
     }
     
-    // Hide transcription container
-    const transcriptionContainer = document.getElementById("transcriptionContainer");
-    if (transcriptionContainer) {
-      transcriptionContainer.style.display = "none";
+    // Reset audio blob and disable Murf button
+    currentAudioBlob = null;
+    if (echoMurfBtn) {
+      echoMurfBtn.disabled = true;
     }
+    hideMurfEcho();
   }
 
-  async function transcribeAudioFile(audioBlob, transcribeBtn) {
+  async function echoWithMurfVoice(audioBlob) {
     try {
-      const btnText = transcribeBtn.querySelector('.btn-text');
-      const btnLoader = transcribeBtn.querySelector('.btn-loader');
-      transcribeBtn.disabled = true;
-      btnText.style.display = 'none';
-      btnLoader.style.display = 'inline';
+      if (echoMurfBtn) {
+        echoMurfBtn.disabled = true;
+        echoMurfBtn.innerHTML = '<span class="btn-loader">Processing with Murf...</span>';
+      }
       
+      showEchoMessage("Processing audio with Murf voice...", "success");
       const formData = new FormData();
-      const filename = `recording_${Date.now()}.wav`;
+      const filename = `echo_recording_${Date.now()}.wav`;
       formData.append('audio', audioBlob, filename);
-      
-      const response = await fetch('/transcribe/file', {
+      const response = await fetch('/tts/echo', {
         method: 'POST',
         body: formData
       });
       
       const data = await response.json();
       
-      if (response.ok && data.success) {
-        showTranscription(data);
-        showEchoMessage('Transcription completed successfully!', 'success');
-        
-        btnText.textContent = 'Transcribed Successfully';
-        btnText.style.display = 'inline';
-        btnLoader.style.display = 'none';
-        transcribeBtn.style.backgroundColor = '#27ae60';
-        transcribeBtn.disabled = true;
+      if (response.ok && data.success && data.audio_url) {
+        // Show the Murf echo result
+        showMurfEcho(data.audio_url, data.transcription);
+        showEchoMessage('Echo with Murf voice generated successfully!', 'success');
       } else {
-        throw new Error(data.detail || 'Transcription failed');
+        throw new Error(data.detail || data.message || 'Failed to generate Murf echo');
       }
       
     } catch (error) {
-      console.error('Transcription error:', error);
-      showEchoMessage(`Transcription failed: ${error.message}`, 'error');
-      
-      const btnText = transcribeBtn.querySelector('.btn-text');
-      const btnLoader = transcribeBtn.querySelector('.btn-loader');
-      transcribeBtn.disabled = false;
-      btnText.style.display = 'inline';
-      btnLoader.style.display = 'none';
+      console.error('Murf echo error:', error);
+      showEchoMessage(`Murf echo failed: ${error.message}`, 'error');
+    } finally {
+      // Reset button state
+      if (echoMurfBtn) {
+        echoMurfBtn.disabled = false;
+        echoMurfBtn.innerHTML = '<span class="btn-text">Echo with Murf Voice</span>';
+      }
     }
   }
 
-  function showTranscription(data) {
-    const transcriptionContainer = document.getElementById("transcriptionContainer");
-    const transcriptionText = document.getElementById("transcriptionText");
-    const transcriptionDetails = document.getElementById("transcriptionDetails");
-    
-    if (transcriptionContainer && transcriptionText) {
-      // Display the transcription text
-      transcriptionText.textContent = data.transcription || "No transcription available";
+  function showMurfEcho(audioUrl, transcription) {
+    if (murfEchoContainer && murfEchoPlayer && murfTranscriptionText) {
+      // Display transcription
+      murfTranscriptionText.innerHTML = `<strong>Transcription:</strong> "${transcription}"`;
       
-      // Simple status message
-      if (transcriptionDetails) {
-        transcriptionDetails.innerHTML = '<span>Status: Completed</span>';
-      }
+      // Set up audio player
+      murfEchoPlayer.src = audioUrl;
+      murfEchoContainer.style.display = "block";
       
-      // Show the container
-      transcriptionContainer.style.display = "block";
+      // Scroll to Murf echo container
+      murfEchoContainer.scrollIntoView({ behavior: "smooth" });
       
-      // Scroll to transcription
-      transcriptionContainer.scrollIntoView({ behavior: "smooth" });
+      // Auto-play the Murf audio
+      setTimeout(() => {
+        murfEchoPlayer.play().catch(e => {
+          console.log("Auto-play failed (browser policy):", e);
+        });
+      }, 500);
+    }
+  }
+
+  function hideMurfEcho() {
+    if (murfEchoContainer) {
+      murfEchoContainer.style.display = "none";
+    }
+    if (murfEchoPlayer && murfEchoPlayer.src) {
+      murfEchoPlayer.src = "";
+    }
+    if (murfTranscriptionText) {
+      murfTranscriptionText.innerHTML = "";
     }
   }
 
