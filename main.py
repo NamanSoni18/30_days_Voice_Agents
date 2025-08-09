@@ -10,12 +10,17 @@ from dotenv import load_dotenv
 import uvicorn
 import assemblyai as aai
 from murf import Murf
+import google.generativeai as genai
 
 load_dotenv()
 
 app = FastAPI(title="30 Days of Voice Agents - FastAPI")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+
+class LLMQueryRequest(BaseModel):
+    text: str
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -25,6 +30,53 @@ async def home(request: Request):
 @app.get("/api/backend")
 async def get_backend_message():
     return {"message": "🚀 This message is coming from FastAPI backend!", "status": "success"}
+
+
+@app.post("/llm/query")
+async def query_llm(request: LLMQueryRequest):
+    try:
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        
+        if not gemini_key or gemini_key == "your_gemini_api_key_here":
+            return {
+                "success": False,
+                "message": "Gemini API key not set. Please set GEMINI_API_KEY in your environment.",
+                "response": "No Response, Set the API First lol!!"
+            }
+        genai.configure(api_key=gemini_key)
+        model = genai.GenerativeModel('gemini-2.5-pro')
+        response = model.generate_content(request.text)
+        
+        if not response.candidates:
+            return {
+                "success": False,
+                "message": "No response generated from Gemini API",
+                "response": "No Response lol!!"
+            }
+        response_text = ""
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, 'text'):
+                response_text += part.text
+        
+        if not response_text.strip():
+            return {
+                "success": False,
+                "message": "No text content in Gemini API response",
+                "response": "No Text you added wow!!"
+            }
+        
+        return {
+            "success": True,
+            "message": "LLM response generated successfully",
+            "response": response_text
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"LLM query error: {str(e)}",
+            "response": ""
+        }
 
 
 @app.post("/tts/echo")

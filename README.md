@@ -1,6 +1,6 @@
-# 30 Days of Voice Agents - Echo Bot Application
+# 30 Days of Voice Agents - Echo Bot & LLM Query Application
 
-A modern web application built with FastAPI, Murf AI, and AssemblyAI that creates an intelligent "Echo Bot" - record your voice, and the AI will echo it back using Murf's natural-sounding voices! This project demonstrates seamless integration between speech-to-text and text-to-speech AI services.
+A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gemini that creates an intelligent "Echo Bot" and LLM query system. Record your voice and the AI will echo it back using Murf's natural-sounding voices, plus query powerful language models with text input! This project demonstrates seamless integration between speech-to-text, text-to-speech, and large language model AI services.
 
 ## ✨ Features
 
@@ -12,21 +12,30 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that create
 - **AI Voice Echo**: Generate natural-sounding echo using Murf AI's text-to-speech with the "en-IN-aarav" voice
 - **Complete Voice Loop**: Record → Transcribe → Generate → Play back in one seamless flow
 
+### 🤖 LLM Query System
+- **Text-based AI Queries**: Send text queries to Google Gemini 2.5 Pro model
+- **Intelligent Responses**: Get comprehensive AI-generated responses to your questions
+- **Error Handling**: Robust error handling for API failures and edge cases
+- **Environment-based Configuration**: Secure API key management for Gemini
+
 ### 🎨 Technical Features
 - **Modern Web Interface**: Clean, responsive design with intuitive controls
-- **FastAPI Backend**: High-performance async Python web framework
+- **FastAPI Backend**: High-performance async Python web framework with automatic API documentation
 - **Real-time Feedback**: Loading states, recording indicators, and comprehensive error handling
 - **Audio Playback**: Built-in HTML5 audio players with standard controls
 - **Cross-browser Support**: Works on Chrome, Firefox, Safari, and other modern browsers
-- **Environment-based Configuration**: Secure API key management
+- **Environment-based Configuration**: Secure API key management for all services
 - **No File Storage**: Direct audio processing without saving files on server
 
 ## 📁 Project Structure
 
 ```
 30 Days of Voice Agents/
-├── main.py                 # FastAPI backend server with Echo Bot endpoint
-├── requirements.txt        # Python dependencies
+├── main.py                 # FastAPI backend server with Echo Bot and LLM endpoints
+├── requirements.txt        # Python dependencies (FastAPI, Murf, AssemblyAI, Gemini)
+├── .env                   # Environment variables (API keys)
+├── .env.example           # Example environment configuration
+├── .gitignore             # Git ignore patterns
 ├── templates/
 │   └── index.html         # Main HTML page with Echo Bot interface
 ├── static/
@@ -48,12 +57,20 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that create
 7. **Echo Playback**: AI-generated audio is played back, completing the echo cycle
 8. **Error Handling**: Comprehensive error messages for various scenarios (API failures, no speech detected, etc.)
 
+### LLM Query Workflow
+1. **Text Input**: User enters text query through the web interface
+2. **API Processing**: FastAPI backend sends query to Google Gemini 2.5 Pro model
+3. **AI Response**: Gemini processes the query and generates intelligent response
+4. **Response Display**: AI-generated response is displayed to the user
+5. **Error Handling**: Comprehensive error handling for API failures and invalid responses
+
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.7 or higher
 - A Murf AI API key ([Get one here](https://murf.ai))
 - An AssemblyAI API key ([Get one here](https://www.assemblyai.com/))
+- A Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
 - Modern web browser with microphone support (Chrome, Firefox, Safari, Edge)
 
 ### Installation
@@ -71,6 +88,8 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that create
    ```bash
    MURF_API_KEY=your_actual_murf_api_key_here
    ASSEMBLYAI_API_KEY=your_actual_assemblyai_api_key_here
+   MURF_VOICE_ID=en-IN-aarav
+   GEMINI_API_KEY=your_actual_gemini_api_key_here
    ```
 
 4. **Run the application**
@@ -88,8 +107,9 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that create
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/` | Serves the main Echo Bot HTML page |
+| `GET` | `/` | Serves the main application HTML page |
 | `POST` | `/tts/echo` | Complete echo workflow: transcribe audio and generate Murf voice response |
+| `POST` | `/llm/query` | Query Google Gemini LLM with text input |
 | `GET` | `/api/backend` | Test endpoint for backend connectivity |
 | `GET` | `/docs` | Interactive API documentation (Swagger UI) |
 | `GET` | `/redoc` | Alternative API documentation (ReDoc) |
@@ -127,6 +147,33 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that create
 }
 ```
 
+### LLM Query API (`/llm/query`)
+
+**Request Body:**
+```json
+{
+  "text": "Your question or query text here"
+}
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "LLM response generated successfully",
+  "response": "AI-generated response text from Gemini model"
+}
+```
+
+**Response (Error):**
+```json
+{
+  "success": false,
+  "message": "Specific error message describing what went wrong",
+  "response": ""
+}
+```
+
 ### Backend Test API (`/api/backend`)
 
 **Response:**
@@ -143,10 +190,11 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that create
 - **[FastAPI](https://fastapi.tiangolo.com/)**: Modern, fast web framework for building APIs with Python
 - **[AssemblyAI](https://www.assemblyai.com/)**: AI-powered speech-to-text transcription service
 - **[Murf AI](https://murf.ai)**: Text-to-speech API for natural voice generation (using "en-IN-aarav" voice)
+- **[Google Gemini](https://ai.google.dev/)**: Advanced large language model for text-based AI queries (using Gemini 2.5 Pro)
 - **[Uvicorn](https://www.uvicorn.org/)**: Lightning-fast ASGI server for production
 - **[Jinja2](https://jinja.palletsprojects.com/)**: Template engine for dynamic HTML rendering
 - **[python-dotenv](https://pypi.org/project/python-dotenv/)**: Environment variable management
-- **[requests](https://docs.python-requests.org/)**: HTTP library for API communication
+- **[Pydantic](https://pydantic-docs.helpmanual.io/)**: Data validation and settings management
 
 ### Frontend
 - **HTML5 & CSS3**: Modern web standards with responsive design
@@ -171,7 +219,7 @@ A modern web application built with FastAPI, Murf AI, and AssemblyAI that create
 
 ## 📦 Dependencies
 
-This project uses the following Python packages (see `requirements.txt`):
+This project uses the following Python packages (see [`requirements.txt`](requirements.txt)):
 
 ```
 fastapi==0.104.1          # Web framework for building APIs
@@ -182,13 +230,14 @@ python-dotenv==1.0.0      # Environment variable management
 murf==2.0.0               # Official Murf AI Python SDK
 requests==2.31.0          # HTTP library for API calls
 assemblyai==0.17.0        # AssemblyAI Python SDK for transcription
+google-generativeai==0.3.2 # Google Gemini AI Python SDK
 ```
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
-Create a `.env` file in the project root with the following variables:
+Create a [`.env`](.env) file in the project root with the following variables:
 
 ```bash
 # Required: Your Murf AI API key
@@ -196,6 +245,9 @@ MURF_API_KEY=your_actual_murf_api_key_here
 
 # Required: Your AssemblyAI API key
 ASSEMBLYAI_API_KEY=your_actual_assemblyai_api_key_here
+
+# Required: Your Google Gemini API key
+GEMINI_API_KEY=your_actual_gemini_api_key_here
 
 # Optional: Murf voice ID (defaults to "en-IN-aarav")
 MURF_VOICE_ID=en-IN-aarav
@@ -213,6 +265,12 @@ MURF_VOICE_ID=en-IN-aarav
 1. Sign up at [AssemblyAI.com](https://www.assemblyai.com/)
 2. Go to your dashboard
 3. Copy your API key
+4. Add it to your `.env` file
+
+#### Google Gemini API Key
+1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Sign in with your Google account
+3. Create a new API key
 4. Add it to your `.env` file
 
 ## 🚀 Development
@@ -236,12 +294,13 @@ FastAPI automatically generates interactive API documentation:
 
 ### Common Issues
 
-#### Echo Bot Related
-1. **"MURF_API_KEY environment variable not set" or "AssemblyAI API key not set"**
-   - Make sure you have created a `.env` file in the project root
+#### API Key Related
+1. **"MURF_API_KEY environment variable not set", "AssemblyAI API key not set", or "Gemini API key not set"**
+   - Make sure you have created a [`.env`](.env) file in the project root
    - Verify your API keys are correctly set in the `.env` file
    - Ensure your API keys are not set to placeholder values like "your_murf_api_key_here"
 
+#### Echo Bot Related
 2. **"Could not connect to backend"**
    - Ensure the FastAPI server is running on `http://127.0.0.1:8000`
    - Check the browser console for detailed error messages
@@ -270,21 +329,26 @@ FastAPI automatically generates interactive API documentation:
    - Update your browser to the latest version
    - Use Chrome, Firefox, Safari, or Edge for best compatibility
 
-8. **Murf API errors**
-   - Verify your Murf API key is valid and has sufficient credits
-   - Check that your Murf account is active and in good standing
-   - Check that your microphone is properly connected
-   - Verify the microphone is working in other applications
-   - Try refreshing the page and granting permission again
+#### LLM Query Related
+8. **"No response generated from Gemini API"**
+   - Verify your Gemini API key is valid and active
+   - Check that your query text is not empty
+   - Ensure you have sufficient API quota/credits
 
-6. **Recording not working**
-   - Ensure you're using a modern browser (Chrome 49+, Firefox 25+, Safari 14.1+)
-   - Check browser console for detailed error messages
-   - Try using a different browser if issues persist
+9. **"LLM query error"**
+   - Check your internet connection
+   - Verify the Gemini API service is not experiencing outages
+   - Ensure your API key has the correct permissions
 
-7. **"Your browser doesn't support audio recording"**
-   - Update your browser to the latest version
-   - Use Chrome, Firefox, Safari, or Edge for best compatibility
+#### General API Errors
+10. **Murf API errors**
+    - Verify your Murf API key is valid and has sufficient credits
+    - Check that your Murf account is active and in good standing
+
+11. **AssemblyAI API errors**
+    - Verify your AssemblyAI API key is valid
+    - Check that you have sufficient API credits
+    - Ensure the audio file format is supported
 
 ### Browser Compatibility
 
@@ -317,6 +381,13 @@ The application includes console logging for debugging. Check the browser consol
 8. **Listen to Echo**: The AI-generated echo will play automatically, and you can see the transcribed text
 9. **Start Over**: Use "Record Again" to create a new recording
 
+### LLM Query System
+1. **Text Input**: Enter your question or query in the text input field
+2. **Submit Query**: Click the submit button to send your query to the Gemini AI model
+3. **AI Processing**: The backend processes your query through Google Gemini 2.5 Pro
+4. **View Response**: The AI-generated response will be displayed on the page
+5. **Ask More**: Submit additional queries as needed
+
 ### Tips for Best Experience
 - **Microphone Quality**: Use a good quality microphone for better recording and transcription results
 - **Quiet Environment**: Record in a quiet space to minimize background noise for better transcription accuracy
@@ -324,6 +395,7 @@ The application includes console logging for debugging. Check the browser consol
 - **Browser Permission**: Always allow microphone access for the Echo Bot to work properly
 - **Audio Format**: The app automatically selects the best supported audio format for your browser
 - **Internet Connection**: Ensure stable internet connection for AI processing
+- **Query Quality**: Use clear, specific questions for better LLM responses
 
 ## 🤝 Contributing
 
@@ -339,13 +411,15 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-**Built with ❤️ using FastAPI, Murf AI, and AssemblyAI**
+**Built with ❤️ using FastAPI, Murf AI, AssemblyAI, and Google Gemini**
 
 ### 🎯 Project Highlights
-- **Seamless AI Integration**: Combines AssemblyAI's speech-to-text with Murf AI's text-to-speech for a complete voice loop
+- **Multi-AI Integration**: Combines AssemblyAI's speech-to-text, Murf AI's text-to-speech, and Google Gemini's language model capabilities
 - **Modern Web Technologies**: Leverages latest browser APIs for audio recording and processing
 - **No File Storage**: Direct audio processing without server-side file storage for better performance and privacy
 - **Production Ready**: Comprehensive error handling and browser compatibility
 - **User-Friendly**: Intuitive interface with clear visual feedback and real-time recording indicators
 - **Voice Quality**: Uses Murf AI's high-quality "en-IN-aarav" voice for natural-sounding echoes
+- **Advanced AI**: Powered by Google Gemini 2.5 Pro for intelligent text-based responses
 - **Real-time Feedback**: Live recording timer and visual indicators enhance user experience
+- **Automatic Documentation**: FastAPI generates interactive API documentation automatically
