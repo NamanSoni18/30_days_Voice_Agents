@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>30 Days of Voice Agents - FastAPI</title>
     <link rel="stylesheet" href="/static/style.css" />
+    <!-- Marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Highlight.js for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   </head>
   <body>
     <div class="container">
@@ -14,50 +19,58 @@
 
       
 
-      <main class="echo-section">
+      <main class="voice-agent-section">
         <div class="card">
-          <h1>Echo Bot</h1>
-          <p>Record your voice and play it back!</p>
+          <h1>AI Voice Agent</h1>
+          <p>Ask me anything! Record your question and I'll respond with voice.</p>
           
           <div class="controls">
-            <button id="startRecordingBtn" class="btn primary">
-              <span class="btn-text">Start Recording</span>
+            <button id="startVoiceQueryBtn" class="btn primary">
+              <span class="btn-text">Start Voice Query</span>
             </button>
-            <button id="stopRecordingBtn" class="btn secondary" disabled>
+            <button id="stopVoiceQueryBtn" class="btn secondary" disabled>
               <span class="btn-text">Stop Recording</span>
             </button>
           </div>
 
-          <div id="recordingStatus" class="recording-status" style="display: none;">
+          <div id="voiceQueryStatus" class="recording-status" style="display: none;">
             <div class="recording-indicator">
               <div class="pulse"></div>
-              <span>Recording...</span>
-              <span id="recordingTimer" class="recording-timer">0s</span>
+              <span>Recording your question...</span>
+              <span id="voiceQueryTimer" class="recording-timer">0s</span>
             </div>
           </div>
 
-          <div id="echoMessageDisplay" class="message-display"></div>
+          <div id="voiceQueryMessageDisplay" class="message-display"></div>
           
-          <div id="echoAudioContainer" class="audio-container" style="display: none;">
-            <h3>Your Recording:</h3>
-            <audio id="echoAudioPlayer" controls>
-              Your browser does not support the audio element.
-            </audio>
-            <div class="audio-actions">
-              <button id="recordAgainBtn" class="btn primary">Record Again</button>
-              <button id="echoMurfBtn" class="btn primary">Echo with Murf Voice</button>
+          <div id="voiceQueryContainer" class="voice-query-container" style="display: none;">
+            <div class="query-results">
+              <div class="transcription-section">
+                <h4>Your Question:</h4>
+                <div id="voiceQueryTranscription" class="transcription-text"></div>
+              </div>
+              
+              <div class="llm-response-section">
+                <h4>AI Response:</h4>
+                <div id="voiceQueryLLMResponse" class="llm-response-text"></div>
+              </div>
+              
+              <div class="response-audio-section">
+                <h4>Listen to Response:</h4>
+                <audio id="voiceQueryAudioPlayer" controls>
+                  Your browser does not support the audio element.
+                </audio>
+              </div>
+              
+              <div class="voice-query-actions">
+                <button id="askAgainBtn" class="btn primary">Ask Another Question</button>
+              </div>
             </div>
-          </div>
-          
-          <div id="murfEchoContainer" class="audio-container" style="display: none;">
-            <h3>Murf Echo Audio:</h3>
-            <div id="murfTranscriptionText" class="transcription-text" style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;"></div>
-            <audio id="murfEchoPlayer" controls>
-              Your browser does not support the audio element.
-            </audio>
           </div>
         </div>
       </main>
+
+
     </div>
 
     <script src="/static/app.js"></script>

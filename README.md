@@ -1,68 +1,81 @@
-# 30 Days of Voice Agents - Echo Bot & LLM Query Application
+# 30 Days of Voice Agents - AI Voice Agent Application
 
-A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gemini that creates an intelligent "Echo Bot" and LLM query system. Record your voice and the AI will echo it back using Murf's natural-sounding voices, plus query powerful language models with text input! This project demonstrates seamless integration between speech-to-text, text-to-speech, and large language model AI services.
+A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gemini that creates an intelligent AI Voice Agent. Record your voice questions and get AI-powered responses with natural text-to-speech playback! This project demonstrates seamless integration between speech-to-text, large language models, and text-to-speech AI services with advanced Markdown rendering and real-time processing feedback.
 
 ## ✨ Features
 
-### 🎙️ Intelligent Echo Bot
-- **Voice Recording**: Record audio directly from your microphone using browser's MediaRecorder API
-- **Real-time Timer**: See recording duration with a visual recording indicator
-- **Instant Playback**: Automatically plays back your original recorded voice
-- **AI-Powered Transcription**: Convert your speech to text using AssemblyAI's advanced speech recognition
-- **AI Voice Echo**: Generate natural-sounding echo using Murf AI's text-to-speech with the "en-IN-aarav" voice
-- **Complete Voice Loop**: Record → Transcribe → Generate → Play back in one seamless flow
+### 🤖 AI Voice Agent
+- **Voice Recording**: Record audio questions directly from your microphone using browser's MediaRecorder API
+- **Real-time Timer**: See recording duration with a visual recording indicator and pulsing animation
+- **AI Transcription**: Convert your speech to text using AssemblyAI's advanced speech recognition
+- **Smart AI Responses**: Get intelligent, well-formatted answers from Google Gemini with Markdown support
+- **Natural Voice Playback**: Hear responses in natural-sounding voices using Murf AI text-to-speech
+- **Complete Voice Loop**: Record → Transcribe → Process with AI → Generate Speech → Play back
+- **Advanced Loading States**: Step-by-step visual feedback showing transcription, analysis, generation, and speech creation
 
-### 🤖 LLM Query System
-- **Text-based AI Queries**: Send text queries to Google Gemini 2.5 Pro model
-- **Intelligent Responses**: Get comprehensive AI-generated responses to your questions
-- **Error Handling**: Robust error handling for API failures and edge cases
-- **Environment-based Configuration**: Secure API key management for Gemini
+### 🎨 Advanced UI Features
+- **Markdown Rendering**: Rich text formatting with support for:
+  - **Bold** and *italic* text formatting
+  - `Inline code` and code blocks with syntax highlighting
+  - Bullet points and numbered lists
+  - Headers and subheaders
+  - Tables and blockquotes
+  - Horizontal rules and links
+- **Real-time Processing Feedback**: Visual step-by-step progress indicator showing:
+  - 🎙️ Transcribing audio
+  - 🔍 Analyzing question  
+  - 🤖 Generating response
+  - 🎵 Creating speech
+- **Responsive Design**: Optimized for desktop, tablet, and mobile devices
+- **Loading Animations**: Professional spinning loaders and animated progress indicators
+- **Error Handling**: Comprehensive error messages with visual feedback
 
-### 🎨 Technical Features
-- **Modern Web Interface**: Clean, responsive design with intuitive controls
+### 🔧 Technical Features
 - **FastAPI Backend**: High-performance async Python web framework with automatic API documentation
-- **Real-time Feedback**: Loading states, recording indicators, and comprehensive error handling
-- **Audio Playback**: Built-in HTML5 audio players with standard controls
+- **Modern JavaScript**: Clean, vanilla JavaScript with advanced audio processing
 - **Cross-browser Support**: Works on Chrome, Firefox, Safari, and other modern browsers
 - **Environment-based Configuration**: Secure API key management for all services
 - **No File Storage**: Direct audio processing without saving files on server
+- **Syntax Highlighting**: Code blocks with professional highlighting using Highlight.js
 
 ## 📁 Project Structure
 
 ```
 30 Days of Voice Agents/
-├── main.py                 # FastAPI backend server with Echo Bot and LLM endpoints
+├── main.py                 # FastAPI backend server with AI Voice Agent endpoint
 ├── requirements.txt        # Python dependencies (FastAPI, Murf, AssemblyAI, Gemini)
 ├── .env                   # Environment variables (API keys)
 ├── .env.example           # Example environment configuration
 ├── .gitignore             # Git ignore patterns
 ├── templates/
-│   └── index.html         # Main HTML page with Echo Bot interface
+│   └── index.html         # Main HTML page with Voice Agent interface and Markdown support
 ├── static/
-│   ├── app.js            # Frontend JavaScript for recording and playback
-│   └── style.css         # CSS styles and responsive design
+│   ├── app.js            # Frontend JavaScript for recording, processing, and Markdown rendering
+│   └── style.css         # CSS styles with Markdown formatting and loading animations
 ├── __pycache__/           # Python bytecode cache
 └── README.md             # Project documentation
 ```
 
 ## 🔧 How It Works
 
-### Echo Bot Workflow
-1. **Recording**: User clicks "Start Recording" and speaks into microphone
+### AI Voice Agent Workflow
+1. **Recording**: User clicks "Start Voice Query" and speaks their question into microphone
 2. **Audio Capture**: Browser's MediaRecorder API captures audio with real-time timer
-3. **Playback**: Original recording is immediately played back to user
-4. **AI Processing**: User clicks "Echo with Murf Voice" to trigger AI processing
-5. **Transcription**: FastAPI backend sends audio to AssemblyAI for speech-to-text conversion
-6. **Voice Generation**: Transcribed text is sent to Murf AI to generate natural speech using "en-IN-aarav" voice
-7. **Echo Playback**: AI-generated audio is played back, completing the echo cycle
-8. **Error Handling**: Comprehensive error messages for various scenarios (API failures, no speech detected, etc.)
-
-### LLM Query Workflow
-1. **Text Input**: User enters text query through the web interface
-2. **API Processing**: FastAPI backend sends query to Google Gemini 2.5 Pro model
-3. **AI Response**: Gemini processes the query and generates intelligent response
-4. **Response Display**: AI-generated response is displayed to the user
-5. **Error Handling**: Comprehensive error handling for API failures and invalid responses
+3. **Processing Feedback**: Visual step-by-step progress shows:
+   - Transcribing audio using AssemblyAI
+   - Analyzing question with AI
+   - Generating response with Google Gemini
+   - Creating speech with Murf AI
+4. **AI Processing**: FastAPI backend processes the complete pipeline:
+   - Speech-to-text conversion via AssemblyAI
+   - Smart prompt engineering for Markdown-formatted responses
+   - AI response generation via Google Gemini (configurable model)
+   - Text-to-speech conversion via Murf AI
+5. **Rich Display**: Results shown with:
+   - Original transcription of user's question
+   - AI response with full Markdown rendering (lists, code, tables, etc.)
+   - Natural voice audio playback of the response
+6. **Error Handling**: Comprehensive error messages for various scenarios
 
 ## 🚀 Quick Start
 
@@ -108,13 +121,12 @@ A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gem
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/` | Serves the main application HTML page |
-| `POST` | `/tts/echo` | Complete echo workflow: transcribe audio and generate Murf voice response |
-| `POST` | `/llm/query` | Query Google Gemini LLM with text input |
+| `POST` | `/llm/query` | Complete AI Voice Agent workflow: transcribe audio, process with AI, and generate speech response |
 | `GET` | `/api/backend` | Test endpoint for backend connectivity |
 | `GET` | `/docs` | Interactive API documentation (Swagger UI) |
 | `GET` | `/redoc` | Alternative API documentation (ReDoc) |
 
-### Echo Bot API (`/tts/echo`)
+### AI Voice Agent API (`/llm/query`)
 
 **Request**: Multipart form data with audio file
 
@@ -131,9 +143,10 @@ A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gem
 ```json
 {
   "success": true,
-  "transcription": "Hello, this is the transcribed text from your recording.",
-  "audio_url": "https://murf.ai/audio/generated-echo-file-url",
-  "message": "Audio echoed successfully with Murf voice"
+  "message": "Voice query processed successfully",
+  "transcription": "What is artificial intelligence?",
+  "llm_response": "# Artificial Intelligence\n\n**Artificial Intelligence (AI)** refers to:\n\n- Machine learning algorithms\n- Neural networks\n- `Natural language processing`\n\n## Applications\n1. Voice assistants\n2. Image recognition\n3. Autonomous vehicles",
+  "audio_url": "https://murf.ai/audio/generated-response-file-url"
 }
 ```
 
@@ -143,34 +156,8 @@ A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gem
   "success": false,
   "message": "Specific error message describing what went wrong",
   "transcription": "",
+  "llm_response": "",
   "audio_url": null
-}
-```
-
-### LLM Query API (`/llm/query`)
-
-**Request Body:**
-```json
-{
-  "text": "Your question or query text here"
-}
-```
-
-**Response (Success):**
-```json
-{
-  "success": true,
-  "message": "LLM response generated successfully",
-  "response": "AI-generated response text from Gemini model"
-}
-```
-
-**Response (Error):**
-```json
-{
-  "success": false,
-  "message": "Specific error message describing what went wrong",
-  "response": ""
 }
 ```
 
@@ -197,23 +184,39 @@ A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gem
 - **[Pydantic](https://pydantic-docs.helpmanual.io/)**: Data validation and settings management
 
 ### Frontend
-- **HTML5 & CSS3**: Modern web standards with responsive design
-- **Vanilla JavaScript**: Frontend interactivity without external frameworks
+- **HTML5 & CSS3**: Modern web standards with responsive design and Markdown styling
+- **Vanilla JavaScript**: Frontend interactivity with advanced audio processing
 - **MediaRecorder API**: Browser-native audio recording capabilities
 - **Web Audio API**: Real-time audio processing and playback
 - **Blob API**: Handling recorded audio data
+- **Marked.js**: Markdown parsing and rendering library
+- **Highlight.js**: Syntax highlighting for code blocks
 
 ## 🎨 Frontend Features
 
-### Echo Bot Interface
+### AI Voice Agent Interface
 - **Responsive Design**: Works seamlessly on desktop, tablet, and mobile devices
 - **Recording Controls**: Start/Stop recording buttons with visual feedback
 - **Real-time Recording Timer**: Shows recording duration (0s, 1s, 2s...)
 - **Visual Recording Indicator**: Animated pulsing dot during recording
-- **Audio Playback Controls**: Built-in HTML5 audio players for both original and echo audio
-- **Transcription Display**: Shows transcribed text in a clean, readable format
-- **Loading States**: Visual feedback during AI processing
-- **Error Handling**: User-friendly error messages for various scenarios
+- **Advanced Loading States**: Step-by-step processing visualization showing:
+  - 🎙️ Transcribing audio (converting speech to text)
+  - 🔍 Analyzing question (understanding user intent)
+  - 🤖 Generating response (creating AI answer)
+  - 🎵 Creating speech (converting text to voice)
+- **Rich Markdown Rendering**: Full support for formatted AI responses including:
+  - Headers and subheaders (# ## ###)
+  - **Bold** and *italic* text formatting
+  - `Inline code` with syntax highlighting
+  - Code blocks with professional syntax highlighting
+  - Bullet points and numbered lists
+  - Tables with hover effects
+  - Blockquotes and horizontal rules
+  - Clickable links
+- **Audio Playback Controls**: Built-in HTML5 audio players with full controls
+- **Transcription Display**: Shows user's original question in clean format
+- **Scrollable Content**: Large AI responses with custom scrollbars
+- **Error Handling**: User-friendly error messages with visual feedback
 - **Microphone Permission Handling**: Clear guidance for granting microphone access
 - **Audio Format Support**: Automatic format selection based on browser capabilities
 
@@ -368,34 +371,31 @@ The application includes console logging for debugging. Check the browser consol
 
 ## 📝 Usage
 
-### Echo Bot
-1. **Start Recording**: Click "Start Recording" button to begin capturing audio
+### AI Voice Agent
+1. **Start Recording**: Click "Start Voice Query" button to begin capturing your question
 2. **Grant Permission**: Allow microphone access when prompted by your browser
-3. **Speak Clearly**: Talk into your microphone while watching the real-time timer and recording indicator
-4. **Stop Recording**: Click "Stop Recording" when you're finished speaking
-5. **Listen to Original**: Your recorded voice will automatically play back through the audio player
-6. **Generate Echo**: Click "Echo with Murf Voice" to process your recording through AI
-7. **AI Processing**: 
-   - Your audio is transcribed to text using AssemblyAI
-   - The transcribed text is converted to speech using Murf AI's "en-IN-aarav" voice
-8. **Listen to Echo**: The AI-generated echo will play automatically, and you can see the transcribed text
-9. **Start Over**: Use "Record Again" to create a new recording
-
-### LLM Query System
-1. **Text Input**: Enter your question or query in the text input field
-2. **Submit Query**: Click the submit button to send your query to the Gemini AI model
-3. **AI Processing**: The backend processes your query through Google Gemini 2.5 Pro
-4. **View Response**: The AI-generated response will be displayed on the page
-5. **Ask More**: Submit additional queries as needed
+3. **Ask Your Question**: Speak clearly into your microphone while watching the real-time timer and recording indicator
+4. **Stop Recording**: Click "Stop Recording" when you're finished asking your question
+5. **Watch Processing**: Observe the step-by-step processing visualization:
+   - 🎙️ **Transcribing audio**: Your speech is converted to text using AssemblyAI
+   - 🔍 **Analyzing question**: AI understands your question's context and intent
+   - 🤖 **Generating response**: Google Gemini creates a comprehensive, Markdown-formatted answer
+   - 🎵 **Creating speech**: Murf AI converts the response to natural-sounding speech
+6. **View Results**: See your complete interaction:
+   - **Your Question**: Transcribed text of what you asked
+   - **AI Response**: Rich, formatted answer with Markdown rendering (lists, code, tables, etc.)
+   - **Listen to Response**: Natural voice audio playback of the AI's answer
+7. **Ask Again**: Use "Ask Another Question" to start a new voice query
 
 ### Tips for Best Experience
 - **Microphone Quality**: Use a good quality microphone for better recording and transcription results
 - **Quiet Environment**: Record in a quiet space to minimize background noise for better transcription accuracy
 - **Clear Speech**: Speak clearly and at a moderate pace for optimal transcription results
-- **Browser Permission**: Always allow microphone access for the Echo Bot to work properly
+- **Browser Permission**: Always allow microphone access for the Voice Agent to work properly
 - **Audio Format**: The app automatically selects the best supported audio format for your browser
 - **Internet Connection**: Ensure stable internet connection for AI processing
-- **Query Quality**: Use clear, specific questions for better LLM responses
+- **Question Quality**: Use clear, specific questions for better AI responses with rich formatting
+- **Content Types**: Ask about topics that benefit from formatting (programming, tutorials, lists, explanations)
 
 ## 🤝 Contributing
 
@@ -414,12 +414,14 @@ This project is open source and available under the [MIT License](LICENSE).
 **Built with ❤️ using FastAPI, Murf AI, AssemblyAI, and Google Gemini**
 
 ### 🎯 Project Highlights
-- **Multi-AI Integration**: Combines AssemblyAI's speech-to-text, Murf AI's text-to-speech, and Google Gemini's language model capabilities
+- **Complete AI Voice Pipeline**: Combines AssemblyAI's speech-to-text, Google Gemini's language model, and Murf AI's text-to-speech capabilities
+- **Advanced Markdown Support**: Rich text formatting with syntax highlighting for technical content
+- **Real-time Processing Feedback**: Step-by-step visual progress with professional loading animations
 - **Modern Web Technologies**: Leverages latest browser APIs for audio recording and processing
 - **No File Storage**: Direct audio processing without server-side file storage for better performance and privacy
 - **Production Ready**: Comprehensive error handling and browser compatibility
 - **User-Friendly**: Intuitive interface with clear visual feedback and real-time recording indicators
-- **Voice Quality**: Uses Murf AI's high-quality "en-IN-aarav" voice for natural-sounding echoes
-- **Advanced AI**: Powered by Google Gemini 2.5 Pro for intelligent text-based responses
-- **Real-time Feedback**: Live recording timer and visual indicators enhance user experience
-- **Automatic Documentation**: FastAPI generates interactive API documentation automatically
+- **Voice Quality**: Uses Murf AI's high-quality voices for natural-sounding responses
+- **Intelligent Responses**: Powered by Google Gemini with smart prompt engineering for formatted output
+- **Cross-Platform**: Works seamlessly across desktop, tablet, and mobile devices
+- **Professional UI**: Modern design with animations, transitions, and responsive layouts
