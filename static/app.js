@@ -173,17 +173,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   async function processVoiceQuery(audioBlob) {
     try {
-      // Show initial processing state
       showVoiceQueryProcessing();
       
       const formData = new FormData();
       const filename = `voice_query_${Date.now()}.wav`;
       formData.append('audio', audioBlob, filename);
-      
-      // Start with transcribing step
       updateProcessingStep('transcribing');
-      
-      // Simulate realistic processing times
+    
       setTimeout(() => updateProcessingStep('analyzing'), 1000);
       setTimeout(() => updateProcessingStep('generating'), 2000);
       setTimeout(() => updateProcessingStep('speech'), 3000);
