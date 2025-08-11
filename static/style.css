@@ -90,6 +90,213 @@ main {
     line-height: 1.6;
 }
 
+.session-info {
+    background: rgba(103, 126, 234, 0.1);
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border-left: 4px solid #667eea;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.session-info small {
+    color: #4a5568;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.session-info #sessionId {
+    font-family: 'Courier New', monospace;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+.chat-history-toggle {
+    display: flex;
+    align-items: center;
+}
+
+.btn-toggle {
+    background: rgba(103, 126, 234, 0.2);
+    color: #4a5568;
+    border: 1px solid #667eea;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-toggle:hover {
+    background: rgba(103, 126, 234, 0.3);
+    transform: translateY(-1px);
+}
+
+.chat-history-container {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.chat-history-container h4 {
+    color: #4a5568;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.chat-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.chat-message {
+    background: rgba(248, 250, 252, 0.8);
+    border-radius: 8px;
+    padding: 12px;
+    border-left: 4px solid #e2e8f0;
+    transition: all 0.2s ease;
+}
+
+.chat-message:hover {
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.chat-message.user {
+    border-left-color: #667eea;
+    background: rgba(103, 126, 234, 0.05);
+}
+
+.chat-message.assistant {
+    border-left-color: #48bb78;
+    background: rgba(72, 187, 120, 0.05);
+}
+
+.message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.message-role {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #4a5568;
+}
+
+.message-time {
+    font-size: 0.8rem;
+    color: #718096;
+    font-family: 'Courier New', monospace;
+}
+
+.message-content {
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: #2d3748;
+    word-wrap: break-word;
+}
+
+.no-history {
+    text-align: center;
+    color: #718096;
+    font-style: italic;
+    padding: 20px;
+}
+
+/* Conversation Cards Styles */
+.conversation-card {
+    background: rgba(248, 250, 252, 0.9);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 2px solid rgba(103, 126, 234, 0.1);
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.conversation-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(103, 126, 234, 0.15);
+    border-color: rgba(103, 126, 234, 0.3);
+    background: rgba(103, 126, 234, 0.05);
+}
+
+.conversation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(103, 126, 234, 0.1);
+}
+
+.conversation-number {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #667eea;
+    background: rgba(103, 126, 234, 0.1);
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.conversation-time {
+    font-size: 0.8rem;
+    color: #718096;
+    font-family: 'Courier New', monospace;
+}
+
+.conversation-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.user-preview,
+.assistant-preview {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.role-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    min-width: 50px;
+    color: #4a5568;
+}
+
+.preview-text {
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: #2d3748;
+    word-wrap: break-word;
+    flex: 1;
+}
+
+.user-preview .preview-text {
+    color: #667eea;
+    font-weight: 500;
+}
+
+.assistant-preview .preview-text {
+    color: #48bb78;
+}
+
 .btn {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;

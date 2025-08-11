@@ -1,17 +1,23 @@
-# 30 Days of Voice Agents - AI Voice Agent Application
+# 30 Days of Voice Agents - AI Voice Agent with Chat History
 
-A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gemini that creates an intelligent AI Voice Agent. Record your voice questions and get AI-powered responses with natural text-to-speech playback! This project demonstrates seamless integration between speech-to-text, large language models, and text-to-speech AI services with advanced Markdown rendering and real-time processing feedback.
+A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gemini that creates an intelligent AI Voice Agent with persistent chat history. Record your voice questions and get AI-powered responses with natural text-to-speech playback! This project demonstrates seamless integration between speech-to-text, large language models, text-to-speech AI services, and MongoDB for conversation memory management.
 
 ## ✨ Features
 
-### 🤖 AI Voice Agent
+### 🤖 AI Voice Agent with Memory
 - **Voice Recording**: Record audio questions directly from your microphone using browser's MediaRecorder API
 - **Real-time Timer**: See recording duration with a visual recording indicator and pulsing animation
 - **AI Transcription**: Convert your speech to text using AssemblyAI's advanced speech recognition
-- **Smart AI Responses**: Get intelligent, well-formatted answers from Google Gemini with Markdown support
+- **Smart AI Responses**: Get intelligent, well-formatted answers from Google Gemini with conversation context
 - **Natural Voice Playback**: Hear responses in natural-sounding voices using Murf AI text-to-speech
 - **Complete Voice Loop**: Record → Transcribe → Process with AI → Generate Speech → Play back
 - **Advanced Loading States**: Step-by-step visual feedback showing transcription, analysis, generation, and speech creation
+- **💾 Chat History**: Persistent conversation history stored in MongoDB with session-based tracking
+- **🔄 Auto-Recording**: Automatically starts recording for next question after AI response playback ends
+- **🗨️ Contextual Conversations**: AI remembers previous messages for more natural follow-up interactions
+- **📁 Session Management**: Share sessions via URL parameters or continue previous conversations
+- **🔍 Interactive History**: Click on previous conversation cards to replay them in the main interface
+- **🛡️ Fallback Storage**: Seamless operation with in-memory storage when MongoDB is unavailable
 
 ### 🎨 Advanced UI Features
 - **Markdown Rendering**: Rich text formatting with support for:
@@ -26,56 +32,68 @@ A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gem
   - 🔍 Analyzing question  
   - 🤖 Generating response
   - 🎵 Creating speech
+- **Session Information Display**: Clear visibility of current session ID with management controls
+- **Chat History Dropdown**: Collapsible conversation history with organized message cards
+- **Interactive Conversation Cards**: Click on any previous conversation to replay it
 - **Responsive Design**: Optimized for desktop, tablet, and mobile devices
 - **Loading Animations**: Professional spinning loaders and animated progress indicators
 - **Error Handling**: Comprehensive error messages with visual feedback
 
 ### 🔧 Technical Features
 - **FastAPI Backend**: High-performance async Python web framework with automatic API documentation
-- **Modern JavaScript**: Clean, vanilla JavaScript with advanced audio processing
+- **MongoDB Integration**: Robust chat history storage with automatic fallback to in-memory storage
+- **Session-based API**: RESTful endpoints supporting session-specific operations (`/agent/chat/{session_id}`)
+- **Modern JavaScript**: Clean, vanilla JavaScript with advanced audio processing and session management
 - **Cross-browser Support**: Works on Chrome, Firefox, Safari, and other modern browsers
 - **Environment-based Configuration**: Secure API key management for all services
 - **No File Storage**: Direct audio processing without saving files on server
 - **Syntax Highlighting**: Code blocks with professional highlighting using Highlight.js
+- **URL Session Parameters**: Share conversations via URL with session_id parameter
+- **Memory Management**: Intelligent context windowing to maintain performance with long conversations
 
 ## 📁 Project Structure
 
 ```
 30 Days of Voice Agents/
-├── main.py                 # FastAPI backend server with AI Voice Agent endpoint
-├── requirements.txt        # Python dependencies (FastAPI, Murf, AssemblyAI, Gemini)
-├── .env                   # Environment variables (API keys)
-├── .env.example           # Example environment configuration
+├── main.py                 # FastAPI backend server with AI Voice Agent and chat history endpoints
+├── requirements.txt        # Python dependencies (FastAPI, Murf, AssemblyAI, Gemini, MongoDB)
+├── .env                   # Environment variables (API keys and MongoDB connection)
+├── .env.example           # Example environment configuration with MongoDB setup
 ├── .gitignore             # Git ignore patterns
 ├── templates/
-│   └── index.html         # Main HTML page with Voice Agent interface and Markdown support
+│   └── index.html         # Main HTML page with Voice Agent interface, session management, and chat history
 ├── static/
-│   ├── app.js            # Frontend JavaScript for recording, processing, and Markdown rendering
-│   └── style.css         # CSS styles with Markdown formatting and loading animations
+│   ├── app.js            # Frontend JavaScript for recording, processing, session management, and chat history
+│   └── style.css         # CSS styles with Markdown formatting, loading animations, and chat history UI
 ├── __pycache__/           # Python bytecode cache
 └── README.md             # Project documentation
 ```
 
 ## 🔧 How It Works
 
-### AI Voice Agent Workflow
-1. **Recording**: User clicks "Start Voice Query" and speaks their question into microphone
-2. **Audio Capture**: Browser's MediaRecorder API captures audio with real-time timer
-3. **Processing Feedback**: Visual step-by-step progress shows:
+### AI Voice Agent Workflow with Chat History
+1. **Session Initialization**: System generates or retrieves session ID from URL parameters
+2. **Recording**: User clicks "Start Voice Query" and speaks their question into microphone
+3. **Audio Capture**: Browser's MediaRecorder API captures audio with real-time timer
+4. **Processing Feedback**: Visual step-by-step progress shows:
    - Transcribing audio using AssemblyAI
-   - Analyzing question with AI
+   - Analyzing question with AI (including chat history context)
    - Generating response with Google Gemini
    - Creating speech with Murf AI
-4. **AI Processing**: FastAPI backend processes the complete pipeline:
+5. **AI Processing**: FastAPI backend processes the complete pipeline:
    - Speech-to-text conversion via AssemblyAI
-   - Smart prompt engineering for Markdown-formatted responses
-   - AI response generation via Google Gemini (configurable model)
+   - Retrieval of previous conversation history from MongoDB
+   - Context-aware prompt engineering with chat history
+   - AI response generation via Google Gemini (Gemini 2.5 Flash)
+   - Storage of user message and AI response in MongoDB
    - Text-to-speech conversion via Murf AI
-5. **Rich Display**: Results shown with:
+6. **Rich Display**: Results shown with:
    - Original transcription of user's question
    - AI response with full Markdown rendering (lists, code, tables, etc.)
    - Natural voice audio playback of the response
-6. **Error Handling**: Comprehensive error messages for various scenarios
+   - Updated chat history dropdown with previous conversations
+7. **Auto-Continue**: After audio playback ends, automatically start recording for the next question
+8. **Error Handling**: Comprehensive error messages for various scenarios
 
 ## 🚀 Quick Start
 
@@ -95,7 +113,18 @@ A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gem
    pip install -r requirements.txt
    ```
 
-3. **Set up your API keys**
+3. **Set up MongoDB**
+   
+   **Option A: Local MongoDB Installation**
+   - Install MongoDB Community Server from [https://www.mongodb.com/try/download/community](https://www.mongodb.com/try/download/community)
+   - Start MongoDB service: `mongod` (default: localhost:27017)
+   
+   **Option B: MongoDB Atlas (Cloud)**
+   - Create a free account at [https://www.mongodb.com/atlas](https://www.mongodb.com/atlas)
+   - Create a cluster and get your connection string
+   - Replace `MONGODB_URL` in your `.env` file with your Atlas connection string
+
+4. **Set up your API keys**
    
    Create a `.env` file in the project root:
    ```bash
@@ -103,14 +132,15 @@ A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gem
    ASSEMBLYAI_API_KEY=your_actual_assemblyai_api_key_here
    MURF_VOICE_ID=en-IN-aarav
    GEMINI_API_KEY=your_actual_gemini_api_key_here
+   MONGODB_URL=mongodb://localhost:27017
    ```
 
-4. **Run the application**
+5. **Run the application**
    ```bash
    python main.py
    ```
 
-5. **Open your browser and allow microphone access**
+6. **Open your browser and allow microphone access**
    
    Navigate to: `http://127.0.0.1:8000`
    
@@ -120,13 +150,84 @@ A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gem
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/` | Serves the main application HTML page |
-| `POST` | `/llm/query` | Complete AI Voice Agent workflow: transcribe audio, process with AI, and generate speech response |
+| `GET` | `/` | Serves the main application HTML page with session management |
+| `POST` | `/agent/chat/{session_id}` | **NEW**: Chat endpoint with persistent history - transcribe audio, process with AI using chat context, and generate speech response |
+| `GET` | `/agent/chat/{session_id}/history` | **NEW**: Retrieve chat history for a specific session |
+| `POST` | `/llm/query` | Legacy endpoint: Complete AI Voice Agent workflow without chat history |
 | `GET` | `/api/backend` | Test endpoint for backend connectivity |
 | `GET` | `/docs` | Interactive API documentation (Swagger UI) |
 | `GET` | `/redoc` | Alternative API documentation (ReDoc) |
 
-### AI Voice Agent API (`/llm/query`)
+### Chat Agent API (`/agent/chat/{session_id}`) - **NEW**
+
+The new chat endpoint maintains conversation history and provides contextual responses.
+
+**Path Parameter:**
+- `session_id`: Unique identifier for the chat session (automatically generated by the UI)
+
+**Request**: Multipart form data with audio file
+
+**Supported File Types:**
+- `audio/wav`
+- `audio/mp3` 
+- `audio/webm` (including codecs like `audio/webm;codecs=opus`)
+- `audio/ogg`
+- `audio/m4a`
+- `audio/wave`
+- `audio/mpeg`
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Voice chat processed successfully",
+  "transcription": "What is artificial intelligence?",
+  "llm_response": "**Artificial Intelligence (AI)** is a branch of computer science...",
+  "audio_url": "https://murf-audio-url.com/response.mp3",
+  "session_id": "session_abc123_1640995200000"
+}
+```
+
+**Chat History Storage:**
+- Messages are stored in MongoDB with timestamps
+- Each session maintains its own conversation history
+- AI responses consider previous context for more natural conversations
+- Automatic fallback to in-memory storage when MongoDB is unavailable
+
+### Chat History API (`/agent/chat/{session_id}/history`) - **NEW**
+
+Retrieve the conversation history for a specific session.
+
+**Path Parameter:**
+- `session_id`: Unique identifier for the chat session
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "session_id": "session_abc123_1640995200000",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is artificial intelligence?",
+      "timestamp": "2023-12-01T10:30:00Z"
+    },
+    {
+      "role": "assistant", 
+      "content": "**Artificial Intelligence (AI)** is a branch of computer science...",
+      "timestamp": "2023-12-01T10:30:15Z"
+    }
+  ]
+}
+```
+
+**Session Management Features:**
+- **URL Parameters**: Sessions can be shared or resumed using `?session_id=your_session_id`
+- **Automatic Generation**: New sessions are created automatically when no session ID is provided
+- **Interactive History**: Previous conversations are displayed in expandable cards
+- **Context Preservation**: Chat history is maintained across browser sessions
+
+### Legacy AI Voice Agent API (`/llm/query`)
 
 **Request**: Multipart form data with audio file
 
@@ -175,9 +276,10 @@ A modern web application built with FastAPI, Murf AI, AssemblyAI, and Google Gem
 
 ### Backend
 - **[FastAPI](https://fastapi.tiangolo.com/)**: Modern, fast web framework for building APIs with Python
+- **[MongoDB](https://www.mongodb.com/)**: NoSQL database for persistent chat history storage with Motor async driver
 - **[AssemblyAI](https://www.assemblyai.com/)**: AI-powered speech-to-text transcription service
 - **[Murf AI](https://murf.ai)**: Text-to-speech API for natural voice generation (using "en-IN-aarav" voice)
-- **[Google Gemini](https://ai.google.dev/)**: Advanced large language model for text-based AI queries (using Gemini 2.5 Pro)
+- **[Google Gemini](https://ai.google.dev/)**: Advanced large language model for text-based AI queries (using Gemini 2.5 Flash)
 - **[Uvicorn](https://www.uvicorn.org/)**: Lightning-fast ASGI server for production
 - **[Jinja2](https://jinja.palletsprojects.com/)**: Template engine for dynamic HTML rendering
 - **[python-dotenv](https://pypi.org/project/python-dotenv/)**: Environment variable management
@@ -397,6 +499,39 @@ The application includes console logging for debugging. Check the browser consol
 - **Question Quality**: Use clear, specific questions for better AI responses with rich formatting
 - **Content Types**: Ask about topics that benefit from formatting (programming, tutorials, lists, explanations)
 
+## 🆕 New Features - Chat History & Session Management
+
+### Chat History Features
+- **Persistent Conversations**: All messages are stored in MongoDB with timestamps for long-term memory
+- **Session-based Organization**: Each conversation is organized by unique session IDs
+- **Interactive History UI**: 
+  - Expandable chat history dropdown showing previous conversations
+  - Click on any conversation card to replay it in the main interface
+  - Organized display with user questions and AI responses paired together
+- **URL Session Sharing**: Share conversations by copying URL with session_id parameter
+- **Auto-Recording Flow**: Seamless conversation flow with automatic recording after AI response
+
+### Session Management
+- **Automatic Session Creation**: New sessions generated automatically when accessing the application
+- **Session Persistence**: Continue previous conversations by using session_id in URL
+- **Fallback Storage**: Graceful degradation to in-memory storage when MongoDB is unavailable
+- **Context Awareness**: AI responses consider previous messages for more natural conversations
+
+### Usage Examples
+```bash
+# Start a new conversation
+http://localhost:8000/
+
+# Continue a specific conversation
+http://localhost:8000/?session_id=session_abc123_1640995200000
+
+# API: Send voice message to specific session
+POST /agent/chat/session_abc123_1640995200000
+
+# API: Get chat history for session
+GET /agent/chat/session_abc123_1640995200000/history
+```
+
 ## 🤝 Contributing
 
 Feel free to contribute to this project by:
@@ -415,11 +550,15 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ### 🎯 Project Highlights
 - **Complete AI Voice Pipeline**: Combines AssemblyAI's speech-to-text, Google Gemini's language model, and Murf AI's text-to-speech capabilities
+- **Persistent Chat Memory**: MongoDB-powered conversation history with session-based organization
+- **Interactive Conversation Management**: Click-to-replay previous conversations with organized chat history UI
+- **Session URL Sharing**: Share and resume conversations via URL parameters
+- **Auto-Recording Flow**: Seamless conversation continuation with automatic recording after responses
 - **Advanced Markdown Support**: Rich text formatting with syntax highlighting for technical content
 - **Real-time Processing Feedback**: Step-by-step visual progress with professional loading animations
 - **Modern Web Technologies**: Leverages latest browser APIs for audio recording and processing
 - **No File Storage**: Direct audio processing without server-side file storage for better performance and privacy
-- **Production Ready**: Comprehensive error handling and browser compatibility
+- **Production Ready**: Comprehensive error handling, graceful fallbacks, and browser compatibility
 - **User-Friendly**: Intuitive interface with clear visual feedback and real-time recording indicators
 - **Voice Quality**: Uses Murf AI's high-quality voices for natural-sounding responses
 - **Intelligent Responses**: Powered by Google Gemini with smart prompt engineering for formatted output

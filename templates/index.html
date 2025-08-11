@@ -22,7 +22,21 @@
       <main class="voice-agent-section">
         <div class="card">
           <h1>AI Voice Agent</h1>
-          <p>Ask me anything! Record your question and I'll respond with voice.</p>
+          <p>Ask me anything! Record your question and I'll respond with voice. Chat history is maintained across the session.</p>
+          
+          <div class="session-info">
+            <small>Session ID: <span id="sessionId">{{ session_id }}</span></small>
+            <div class="chat-history-toggle">
+              <button id="toggleChatHistory" class="btn-toggle">Show Chat History</button>
+            </div>
+          </div>
+          
+          <div id="chatHistoryContainer" class="chat-history-container" style="display: none;">
+            <h4>Previous Messages in this Session:</h4>
+            <div id="chatHistoryList" class="chat-history-list">
+              <!-- Chat history will be populated here -->
+            </div>
+          </div>
           
           <div class="controls">
             <button id="startVoiceQueryBtn" class="btn primary">
@@ -73,6 +87,10 @@
 
     </div>
 
+    <script>
+      // Set session ID globally for JavaScript
+      window.SESSION_ID = "{{ session_id }}";
+    </script>
     <script src="/static/app.js"></script>
   </body>
 </html>
