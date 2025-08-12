@@ -424,11 +424,17 @@ document.addEventListener("DOMContentLoaded", function () {
       setTimeout(() => updateProcessingStep('generating'), 2000);
       setTimeout(() => updateProcessingStep('speech'), 3000);
       
-      // Use the new chat endpoint with session ID
+      // Use the new chat endpoint with session ID with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
       const response = await fetch(`/agent/chat/${sessionId}`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       const data = await response.json();
       
@@ -448,14 +454,93 @@ document.addEventListener("DOMContentLoaded", function () {
           }
         }, 1000);
       } else {
+        // Handle error responses with fallback audio
         hideVoiceQueryProcessing();
-        throw new Error(data.message || 'Failed to process voice query');
+        
+        // Determine error type and show appropriate message
+        const errorType = data.error_type || 'general_error';
+        const errorMessage = data.message || 'An unexpected error occurred';
+        
+        console.error(`Voice query error (${errorType}):`, errorMessage);
+        
+        // Show error-specific messages to user
+        let userMessage = '';
+        switch (errorType) {
+          case 'api_keys_missing':
+            userMessage = '🔧 Configuration issue detected. Please contact support.';
+            break;
+          case 'file_error':
+            userMessage = '🎤 Audio file issue. Please try recording again.';
+            break;
+          case 'stt_error':
+            userMessage = '🎯 Having trouble understanding your audio. Please speak clearly and try again.';
+            break;
+          case 'no_speech':
+            userMessage = '🔇 No speech detected. Please speak clearly into your microphone.';
+            break;
+          case 'llm_error':
+            userMessage = '🤖 AI thinking process interrupted. Please try again in a moment.';
+            break;
+          case 'tts_error':
+            userMessage = '🔊 Voice generation issue. The text response is still available.';
+            break;
+          default:
+            userMessage = '⚠️ Connection issue. Please check your internet and try again.';
+        }
+        
+        showVoiceQueryMessage(userMessage, 'error');
+        
+        // If there's fallback audio or any response content, show it
+        if (data.audio_url || data.llm_response || data.transcription) {
+          setTimeout(() => {
+            showVoiceQuery(
+              data.transcription || '', 
+              data.llm_response || errorMessage, 
+              data.audio_url
+            );
+            
+            // Auto-play fallback audio if available
+            if (data.audio_url && voiceQueryAudioPlayer) {
+              setTimeout(() => {
+                voiceQueryAudioPlayer.play().catch(e => {
+                  console.log("Auto-play failed for fallback audio:", e);
+                });
+              }, 500);
+            }
+          }, 2000);
+        }
+        
+        // Auto-restart recording for certain error types after delay
+        if (['no_speech', 'stt_error', 'file_error'].includes(errorType)) {
+          setTimeout(() => {
+            if (!voiceQueryRecorder || voiceQueryRecorder.state !== "recording") {
+              console.log("Auto-restarting recording after error...");
+              startVoiceQuery();
+            }
+          }, 3000);
+        }
       }
       
     } catch (error) {
       console.error('Voice query processing error:', error);
       hideVoiceQueryProcessing();
-      showVoiceQueryMessage(`Voice query failed: ${error.message}`, 'error');
+      
+      // Handle network errors
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        showVoiceQueryMessage('🌐 Network connection error. Please check your internet connection and try again.', 'error');
+      } else if (error.name === 'AbortError') {
+        showVoiceQueryMessage('⏱️ Request timed out. Please try again.', 'error');
+      } else {
+        showVoiceQueryMessage(`❌ Unexpected error: ${error.message}`, 'error');
+      }
+      
+      // Auto-restart recording after network errors
+      setTimeout(() => {
+        if (!voiceQueryRecorder || voiceQueryRecorder.state !== "recording") {
+          console.log("Auto-restarting recording after network error...");
+          startVoiceQuery();
+        }
+      }, 4000);
     }
   }
 
@@ -463,7 +548,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (voiceQueryContainer && voiceQueryTranscription && voiceQueryLLMResponse && voiceQueryAudioPlayer) {
       voiceQueryTranscription.innerHTML = transcription;
       try {
-        // Configure marked for better rendering
+
         if (typeof marked !== 'undefined') {
           marked.setOptions({
             breaks: true,
@@ -545,11 +630,17 @@ document.addEventListener("DOMContentLoaded", function () {
         `;
       }
 
+      // Auto-hide success and error messages after different durations
       if (type === "success") {
         setTimeout(() => {
           voiceQueryMessageDisplay.innerHTML = "";
           voiceQueryMessageDisplay.style.display = "none";
         }, 5000);
+      } else if (type === "error") {
+        setTimeout(() => {
+          voiceQueryMessageDisplay.innerHTML = "";
+          voiceQueryMessageDisplay.style.display = "none";
+        }, 8000); // Show errors a bit longer
       }
     }
   }
