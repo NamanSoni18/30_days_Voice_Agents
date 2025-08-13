@@ -11,8 +11,7 @@ document.addEventListener("DOMContentLoaded", function () {
   initializeSession();
 
   // Voice query elements
-  const startVoiceQueryBtn = document.getElementById("startVoiceQueryBtn");
-  const stopVoiceQueryBtn = document.getElementById("stopVoiceQueryBtn");
+  const voiceQueryBtn = document.getElementById("voiceQueryBtn");
   const voiceQueryStatus = document.getElementById("voiceQueryStatus");
   const voiceQueryTimer = document.getElementById("voiceQueryTimer");
   const voiceQueryMessageDisplay = document.getElementById("voiceQueryMessageDisplay");
@@ -218,7 +217,7 @@ document.addEventListener("DOMContentLoaded", function () {
       voiceQueryAudioPlayer.src = "";
     }
     
-    // Hide the audio section for history items
+    // Keep the audio section hidden for history items
     const responseAudioSection = document.querySelector('.response-audio-section');
     if (responseAudioSection) {
       responseAudioSection.style.display = "none";
@@ -251,6 +250,7 @@ document.addEventListener("DOMContentLoaded", function () {
       console.log("Audio playback ended, starting auto-recording...");
       setTimeout(() => {
         if (!voiceQueryRecorder || voiceQueryRecorder.state !== "recording") {
+          updateVoiceQueryButton('ready');
           startVoiceQuery();
         }
       }, 1000); // Wait 1 second before starting auto-recording
@@ -260,14 +260,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    if (startVoiceQueryBtn) {
+    if (voiceQueryBtn) {
       showVoiceQueryMessage("Your browser doesn't support audio recording. Please use a modern browser like Chrome, Firefox, or Safari.", "error");
-      startVoiceQueryBtn.disabled = true;
+      voiceQueryBtn.disabled = true;
     }
   } else {
-    if (startVoiceQueryBtn && stopVoiceQueryBtn) {
-      startVoiceQueryBtn.addEventListener("click", startVoiceQuery);
-      stopVoiceQueryBtn.addEventListener("click", stopVoiceQuery);
+    if (voiceQueryBtn) {
+      voiceQueryBtn.addEventListener("click", toggleVoiceQuery);
       
       if (askAgainBtn) {
         askAgainBtn.addEventListener("click", function() {
@@ -278,6 +277,55 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
   }
+
+  // Toggle function for the combined button
+  function toggleVoiceQuery() {
+    const currentState = voiceQueryBtn.getAttribute('data-state');
+    
+    if (currentState === 'ready' || currentState === 'completed') {
+      startVoiceQuery();
+    } else if (currentState === 'recording') {
+      stopVoiceQuery();
+    }
+  }
+
+  // Update button state and appearance
+  function updateVoiceQueryButton(state) {
+    if (!voiceQueryBtn) return;
+    
+    const btnIcon = voiceQueryBtn.querySelector('.btn-icon');
+    const btnText = voiceQueryBtn.querySelector('.btn-text');
+    
+    voiceQueryBtn.setAttribute('data-state', state);
+    
+    switch (state) {
+      case 'ready':
+        voiceQueryBtn.disabled = false;
+        voiceQueryBtn.className = 'btn primary';
+        btnIcon.textContent = '🎤';
+        btnText.textContent = 'Start Recording';
+        break;
+      case 'recording':
+        voiceQueryBtn.disabled = false;
+        voiceQueryBtn.className = 'btn secondary recording';
+        btnIcon.textContent = '⏹️';
+        btnText.textContent = 'Stop Recording';
+        break;
+      case 'processing':
+        voiceQueryBtn.disabled = true;
+        voiceQueryBtn.className = 'btn processing';
+        btnIcon.textContent = '⏳';
+        btnText.textContent = 'Processing...';
+        break;
+      case 'completed':
+        voiceQueryBtn.disabled = false;
+        voiceQueryBtn.className = 'btn primary';
+        btnIcon.textContent = '🎤';
+        btnText.textContent = 'Ask Another Question';
+        break;
+    }
+  }
+
   function getSupportedMimeType() {
     const mimeTypes = [
       'audio/webm',
@@ -315,8 +363,7 @@ document.addEventListener("DOMContentLoaded", function () {
       voiceQueryRecorder.onstart = function() {
         console.log("Voice query recording started");
         voiceQueryStatus.style.display = "block";
-        startVoiceQueryBtn.disabled = true;
-        stopVoiceQueryBtn.disabled = false;
+        updateVoiceQueryButton('recording');
         hideVoiceQuery();
         showVoiceQueryMessage("Recording your question! Speak clearly into your microphone.", "success");
         
@@ -399,8 +446,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function resetVoiceQueryState() {
-    if (startVoiceQueryBtn) startVoiceQueryBtn.disabled = false;
-    if (stopVoiceQueryBtn) stopVoiceQueryBtn.disabled = true;
+    updateVoiceQueryButton('ready');
     if (voiceQueryStatus) voiceQueryStatus.style.display = "none";
     
     stopVoiceQueryTimer();
@@ -413,6 +459,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   async function processVoiceQuery(audioBlob) {
     try {
+      updateVoiceQueryButton('processing');
       showVoiceQueryProcessing();
       
       const formData = new FormData();
@@ -445,6 +492,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // Small delay to show completion
         setTimeout(() => {
           hideVoiceQueryProcessing();
+          updateVoiceQueryButton('completed');
           showVoiceQuery(data.transcription, data.llm_response, data.audio_url);
           showVoiceQueryMessage('AI response generated successfully! Audio will auto-play and then start recording for your next question.', 'success');
           
@@ -456,6 +504,7 @@ document.addEventListener("DOMContentLoaded", function () {
       } else {
         // Handle error responses with fallback audio
         hideVoiceQueryProcessing();
+        updateVoiceQueryButton('ready');
         
         // Determine error type and show appropriate message
         const errorType = data.error_type || 'general_error';
@@ -515,6 +564,7 @@ document.addEventListener("DOMContentLoaded", function () {
           setTimeout(() => {
             if (!voiceQueryRecorder || voiceQueryRecorder.state !== "recording") {
               console.log("Auto-restarting recording after error...");
+              updateVoiceQueryButton('ready');
               startVoiceQuery();
             }
           }, 3000);
@@ -524,6 +574,7 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (error) {
       console.error('Voice query processing error:', error);
       hideVoiceQueryProcessing();
+      updateVoiceQueryButton('ready');
       
       // Handle network errors
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
@@ -538,6 +589,7 @@ document.addEventListener("DOMContentLoaded", function () {
       setTimeout(() => {
         if (!voiceQueryRecorder || voiceQueryRecorder.state !== "recording") {
           console.log("Auto-restarting recording after network error...");
+          updateVoiceQueryButton('ready');
           startVoiceQuery();
         }
       }, 4000);
@@ -578,14 +630,14 @@ document.addEventListener("DOMContentLoaded", function () {
         voiceQueryLLMResponse.innerHTML = llmResponse.replace(/\n/g, '<br>');
       }
       
-      // Show audio section for new responses
+      // Keep audio section hidden for new responses (audio will auto-play)
       const responseAudioSection = document.querySelector('.response-audio-section');
       if (responseAudioSection) {
-        responseAudioSection.style.display = "block";
+        responseAudioSection.style.display = "none";
       }
       
       voiceQueryAudioPlayer.src = audioUrl;
-      voiceQueryAudioPlayer.style.display = "block";
+      voiceQueryAudioPlayer.style.display = "none"; // Keep player hidden
       voiceQueryContainer.style.display = "block";
       voiceQueryContainer.scrollIntoView({ behavior: "smooth" });
       setTimeout(() => {

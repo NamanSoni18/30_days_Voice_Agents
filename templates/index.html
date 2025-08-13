@@ -39,11 +39,9 @@
           </div>
           
           <div class="controls">
-            <button id="startVoiceQueryBtn" class="btn primary">
-              <span class="btn-text">Start Voice Query</span>
-            </button>
-            <button id="stopVoiceQueryBtn" class="btn secondary" disabled>
-              <span class="btn-text">Stop Recording</span>
+            <button id="voiceQueryBtn" class="btn primary" data-state="ready">
+              <span class="btn-icon">🎤</span>
+              <span class="btn-text">Start Recording</span>
             </button>
           </div>
 
@@ -69,9 +67,9 @@
                 <div id="voiceQueryLLMResponse" class="llm-response-text"></div>
               </div>
               
-              <div class="response-audio-section">
+              <div class="response-audio-section" style="display: none;">
                 <h4>Listen to Response:</h4>
-                <audio id="voiceQueryAudioPlayer" controls>
+                <audio id="voiceQueryAudioPlayer" controls style="display: none;">
                   Your browser does not support the audio element.
                 </audio>
               </div>
