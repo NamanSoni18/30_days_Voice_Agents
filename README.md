@@ -41,12 +41,19 @@ A sleek, production-ready conversational AI voice agent built with FastAPI, feat
 - **Error Constants**: Centralized error messages and fallback handling
 - **Clean Code**: Removed unused imports, followed Python best practices
 
+### 🔌 **Real-Time Communication (NEW)**
+- **WebSocket Support**: Bidirectional real-time communication between client and server
+- **Connection Management**: Automatic connection tracking and cleanup
+- **Echo Functionality**: Server echoes messages with enhanced metadata
+- **Multi-Connection Support**: Handle multiple simultaneous WebSocket connections
+- **Extensible Foundation**: Ready for future streaming and real-time features
+
 ## 📁 Project Structure
 
 ```
 30 Days of Voice Agents/
 ├── main.py                 # FastAPI application entry point with refactored endpoints
-├── requirements.txt        # Python dependencies (FastAPI, Murf, AssemblyAI, Gemini, MongoDB)
+├── requirements.txt        # Python dependencies (FastAPI, WebSockets, Murf, AssemblyAI, Gemini, MongoDB)
 ├── .env                   # Environment variables (API keys and configuration)
 ├── models/
 │   └── schemas.py         # Pydantic models for request/response validation
@@ -183,8 +190,66 @@ The application now follows a **clean, modular architecture** for better maintai
 | `POST` | `/agent/chat/{session_id}` | Process voice input with session-based conversation history |
 | `GET` | `/agent/chat/{session_id}/history` | Retrieve chat history for a specific session |
 | `GET` | `/api/backend` | Backend connectivity test endpoint |
+| `WebSocket` | `/ws` | Real-time WebSocket connection for bidirectional communication |
 | `GET` | `/docs` | Interactive API documentation (Swagger UI) |
 | `GET` | `/redoc` | Alternative API documentation (ReDoc) |
+
+## 🔌 WebSocket Support (Day 15)
+
+The application now includes **real-time WebSocket functionality** for bidirectional communication between client and server.
+
+### WebSocket Endpoint
+
+**Endpoint:** `ws://127.0.0.1:8000/ws`
+
+### Features
+- ✅ **Real-time Communication**: Instant bidirectional messaging
+- ✅ **Connection Management**: Automatic connection tracking and cleanup
+- ✅ **Echo Functionality**: Server echoes back messages with enhanced metadata
+- ✅ **Connection Monitoring**: Real-time connection count and status
+- ✅ **Error Handling**: Graceful disconnect handling with logging
+
+### WebSocket Response Format
+
+When you send a message to the WebSocket endpoint, you'll receive an enhanced echo response:
+
+```json
+{
+  "type": "echo",
+  "original_message": "Hello WebSocket!",
+  "echo_message": "Echo: Hello WebSocket!",
+  "timestamp": "2025-08-16T10:39:40.123456",
+  "connection_id": 123456789,
+  "total_connections": 1
+}
+```
+
+### Testing with Postman
+
+1. **Open Postman** and create a new **WebSocket Request**
+2. **Connect to:** `ws://127.0.0.1:8000/ws`
+3. **Send test messages:**
+   - `"Hello WebSocket!"`
+   - `"Testing real-time communication"`
+   - `{"message": "JSON test", "type": "test"}`
+4. **Observe responses** with timestamps and connection metadata
+5. **Test multiple connections** to see connection count changes
+
+### Server Logs
+Monitor the terminal for WebSocket activity:
+```
+INFO - WebSocket connected. Total connections: 1
+INFO - Received WebSocket message: Hello WebSocket!
+INFO - Sent echo response back to client
+INFO - WebSocket disconnected. Total connections: 0
+```
+
+### Integration Ready
+This WebSocket foundation is ready for future enhancements:
+- **Real-time voice streaming** (future implementation)
+- **Live conversation updates**
+- **Multi-user chat capabilities**
+- **Real-time system notifications**
 
 ### Primary Chat Agent API (`/agent/chat/{session_id}`)
 
@@ -270,6 +335,7 @@ Retrieve conversation history for a specific session.
 
 ### Backend Architecture
 - **[FastAPI](https://fastapi.tiangolo.com/)**: Modern, fast web framework with automatic API documentation
+- **[WebSockets](https://websockets.readthedocs.io/)**: Real-time bidirectional communication support
 - **[Pydantic](https://pydantic-docs.helpmanual.io/)**: Data validation and settings management with type hints
 - **Modular Services**: Clean separation of STT, LLM, TTS, and database operations
 - **Centralized Logging**: Structured logging with file output and error tracking

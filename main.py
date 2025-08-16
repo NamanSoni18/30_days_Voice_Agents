@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, UploadFile, File, Path, HTTPException
+from fastapi import FastAPI, Request, UploadFile, File, Path, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -6,6 +6,8 @@ from fastapi.encoders import jsonable_encoder
 import os
 import uuid
 import uvicorn
+import json
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Import our custom modules
@@ -309,6 +311,58 @@ async def chat_with_agent(
             audio_url=fallback_audio,
             error_type=ErrorType.GENERAL_ERROR
         )
+
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+        logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+    
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+    
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except Exception as e:
+                logger.error(f"Error broadcasting to WebSocket: {e}")
+manager = ConnectionManager()
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            logger.info(f"Received WebSocket message: {data}")
+            response = {
+                "type": "echo",
+                "original_message": data,
+                "echo_message": f"Echo: {data}",
+                "timestamp": datetime.now().isoformat(),
+                "connection_id": id(websocket),
+                "total_connections": len(manager.active_connections)
+            }
+            await manager.send_personal_message(json.dumps(response), websocket)
+            logger.info(f"Sent echo response back to client")
+            
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logger.info("WebSocket connection closed")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
 
 
 if __name__ == "__main__":
