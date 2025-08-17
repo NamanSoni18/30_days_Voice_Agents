@@ -82,6 +82,41 @@
         </div>
       </main>
 
+      <!-- Audio Streaming Section (Day 16) -->
+      <main class="audio-streaming-section">
+        <div class="card">
+          <h1>🎵 Audio Streaming using Websockets</h1>          
+          <div class="streaming-info">
+            <div class="status-indicator">
+              <span id="connectionStatus" class="status-badge disconnected">Disconnected</span>
+              <small id="streamingSessionId" class="streaming-session"></small>
+            </div>
+          </div>
+          
+          <div class="controls">
+            <button id="audioStreamBtn" class="btn secondary" data-state="ready">
+              <span class="btn-icon">🎤</span>
+              <span class="btn-text">Start Audio Streaming</span>
+            </button>
+            
+            <button id="listAudioFilesBtn" class="btn tertiary" style="margin-left: 10px;">
+              <span class="btn-icon">📁</span>
+              <span class="btn-text">View Saved Files</span>
+            </button>
+          </div>
+
+          <div id="audioStreamStatus" class="streaming-status-container" style="display: none;">
+            <h4>Streaming Status:</h4>
+            <div id="streamingStatusLog" class="status-log"></div>
+          </div>
+
+          <div id="audioFilesContainer" class="audio-files-container" style="display: none;">
+            <h4>Saved Audio Files:</h4>
+            <div id="audioFilesList" class="audio-files-list"></div>
+          </div>
+        </div>
+      </main>
+
 
     </div>
 

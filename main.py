@@ -10,7 +10,6 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Import our custom modules
 from models.schemas import (
     VoiceChatResponse, 
     ChatHistoryResponse, 
@@ -27,8 +26,6 @@ from utils.constants import get_fallback_message
 
 # Load environment variables
 load_dotenv()
-
-# Setup logging
 setup_logging()
 logger = get_logger(__name__)
 
@@ -42,8 +39,6 @@ app = FastAPI(
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-
-# Global service instances
 stt_service: STTService = None
 llm_service: LLMService = None
 tts_service: TTSService = None
@@ -61,8 +56,6 @@ def initialize_services() -> APIKeyConfig:
     )
     
     global stt_service, llm_service, tts_service, database_service
-    
-    # Initialize services only if keys are valid
     if config.are_keys_valid:
         stt_service = STTService(config.assemblyai_api_key)
         llm_service = LLMService(config.gemini_api_key)
@@ -71,8 +64,6 @@ def initialize_services() -> APIKeyConfig:
     else:
         missing_keys = config.validate_keys()
         logger.error(f"❌ Missing API keys: {missing_keys}")
-    
-    # Always initialize database service (has fallback)
     database_service = DatabaseService(config.mongodb_url)
     
     return config
@@ -80,12 +71,9 @@ def initialize_services() -> APIKeyConfig:
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize services and database connection on startup"""
     logger.info("🚀 Starting Voice Agent application...")
     
     config = initialize_services()
-    
-    # Connect to database
     if database_service:
         await database_service.connect()
     
@@ -154,21 +142,63 @@ async def get_chat_history_endpoint(session_id: str = Path(..., description="Ses
         )
 
 
+@app.get("/api/streamed-audio")
+async def list_streamed_audio():
+    """Get list of all streamed audio files"""
+    try:
+        audio_dir = "streamed_audio"
+        if not os.path.exists(audio_dir):
+            return {
+                "success": True,
+                "message": "No streamed audio directory found",
+                "files": [],
+                "total_files": 0
+            }
+        
+        audio_files = []
+        for filename in os.listdir(audio_dir):
+            if filename.endswith('.wav'):
+                filepath = os.path.join(audio_dir, filename)
+                file_stats = os.stat(filepath)
+                audio_files.append({
+                    "filename": filename,
+                    "size_bytes": file_stats.st_size,
+                    "created_at": datetime.fromtimestamp(file_stats.st_ctime).isoformat(),
+                    "modified_at": datetime.fromtimestamp(file_stats.st_mtime).isoformat()
+                })
+        
+        # Sort by creation time (newest first)
+        audio_files.sort(key=lambda x: x["created_at"], reverse=True)
+        
+        return {
+            "success": True,
+            "message": f"Found {len(audio_files)} streamed audio files",
+            "files": audio_files,
+            "total_files": len(audio_files),
+            "total_size_bytes": sum(f["size_bytes"] for f in audio_files)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing streamed audio files: {e}")
+        return {
+            "success": False,
+            "message": f"Error listing files: {str(e)}",
+            "files": [],
+            "total_files": 0
+        }
+
+
 @app.post("/agent/chat/{session_id}", response_model=VoiceChatResponse)
 async def chat_with_agent(
     session_id: str = Path(..., description="Session ID"),
     audio: UploadFile = File(..., description="Audio file for voice input")
 ):
-    """
-    Main chat endpoint for voice conversation with comprehensive error handling
-    """
     transcribed_text = ""
     response_text = ""
     
     try:
         logger.info(f"Processing voice chat for session: {session_id}")
         
-        # Check if services are initialized
         if not all([stt_service, llm_service, tts_service, database_service]):
             logger.error("Services not properly initialized")
             fallback_audio = None
@@ -185,8 +215,6 @@ async def chat_with_agent(
                 audio_url=fallback_audio,
                 error_type=ErrorType.API_KEYS_MISSING
             )
-        
-        # Read and validate audio file
         try:
             audio_content = await audio.read()
             if not audio_content:
@@ -204,8 +232,6 @@ async def chat_with_agent(
                 audio_url=fallback_audio,
                 error_type=ErrorType.FILE_ERROR
             )
-        
-        # Step 1: Speech-to-Text
         try:
             transcribed_text = await stt_service.transcribe_audio(audio_content)
             if not transcribed_text:
@@ -233,16 +259,12 @@ async def chat_with_agent(
                 audio_url=fallback_audio,
                 error_type=ErrorType.STT_ERROR
             )
-        
-        # Step 2: Get chat history and add user message
         try:
             chat_history = await database_service.get_chat_history(session_id)
             await database_service.add_message_to_history(session_id, "user", transcribed_text)
         except Exception as e:
             logger.error(f"Chat history error: {str(e)}")
             chat_history = []  # Continue with empty history
-        
-        # Step 3: Generate LLM response
         try:
             response_text = await llm_service.generate_response(transcribed_text, chat_history)
         except Exception as e:
@@ -258,14 +280,10 @@ async def chat_with_agent(
                 audio_url=fallback_audio,
                 error_type=ErrorType.LLM_ERROR
             )
-        
-        # Step 4: Save assistant response to history
         try:
             await database_service.add_message_to_history(session_id, "assistant", response_text)
         except Exception as e:
             logger.error(f"Failed to save assistant response to history: {str(e)}")
-        
-        # Step 5: Generate speech from text
         try:
             audio_url = await tts_service.generate_speech(response_text)
             if not audio_url:
@@ -283,8 +301,6 @@ async def chat_with_agent(
                 audio_url=fallback_audio,
                 error_type=ErrorType.TTS_ERROR
             )
-        
-        # Success response
         logger.info(f"Voice chat completed successfully for session: {session_id}")
         return VoiceChatResponse(
             success=True,
@@ -311,8 +327,6 @@ async def chat_with_agent(
             audio_url=fallback_audio,
             error_type=ErrorType.GENERAL_ERROR
         )
-
-# WebSocket connection manager
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
@@ -336,6 +350,99 @@ class ConnectionManager:
             except Exception as e:
                 logger.error(f"Error broadcasting to WebSocket: {e}")
 manager = ConnectionManager()
+
+
+@app.websocket("/ws/audio-stream")
+async def audio_stream_websocket(websocket: WebSocket):
+    await manager.connect(websocket)
+    session_id = str(uuid.uuid4())
+    audio_filename = f"streamed_audio_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+    audio_filepath = os.path.join("streamed_audio", audio_filename)
+    os.makedirs("streamed_audio", exist_ok=True)
+    
+    try:
+        welcome_message = {
+            "type": "audio_stream_ready",
+            "message": "Audio streaming endpoint ready. Send binary audio data.",
+            "session_id": session_id,
+            "audio_filename": audio_filename,
+            "timestamp": datetime.now().isoformat()
+        }
+        await manager.send_personal_message(json.dumps(welcome_message), websocket)
+        logger.info(f"Audio streaming session started: {session_id}")
+        
+        with open(audio_filepath, "wb") as audio_file:
+            chunk_count = 0
+            total_bytes = 0
+            
+            while True:
+                try:
+                    message = await websocket.receive()
+                    
+                    if "text" in message:
+                        command = message["text"]
+                        logger.info(f"Received command: {command}")
+                        
+                        if command == "start_streaming":
+                            response = {
+                                "type": "command_response",
+                                "message": "Ready to receive audio chunks",
+                                "status": "streaming_ready"
+                            }
+                            await manager.send_personal_message(json.dumps(response), websocket)
+                            
+                        elif command == "stop_streaming":
+                            response = {
+                                "type": "command_response", 
+                                "message": f"Audio streaming completed. Saved {chunk_count} chunks ({total_bytes} bytes) to {audio_filename}",
+                                "status": "streaming_completed",
+                                "chunk_count": chunk_count,
+                                "total_bytes": total_bytes,
+                                "audio_filename": audio_filename
+                            }
+                            await manager.send_personal_message(json.dumps(response), websocket)
+                            logger.info(f"Audio streaming completed: {audio_filename} ({total_bytes} bytes)")
+                            break
+                            
+                    elif "bytes" in message:
+                        # Handle binary audio data
+                        audio_chunk = message["bytes"]
+                        chunk_size = len(audio_chunk)
+                        
+                        # Write audio chunk to file
+                        audio_file.write(audio_chunk)
+                        audio_file.flush()
+                        
+                        chunk_count += 1
+                        total_bytes += chunk_size
+                        
+                        logger.info(f"Received audio chunk {chunk_count}: {chunk_size} bytes")
+                        ack_response = {
+                            "type": "chunk_ack",
+                            "chunk_number": chunk_count,
+                            "chunk_size": chunk_size,
+                            "total_bytes": total_bytes,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        await manager.send_personal_message(json.dumps(ack_response), websocket)
+                        
+                except Exception as e:
+                    logger.error(f"Error processing audio stream: {e}")
+                    error_response = {
+                        "type": "error",
+                        "message": f"Error processing audio data: {str(e)}"
+                    }
+                    await manager.send_personal_message(json.dumps(error_response), websocket)
+                    break
+                    
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logger.info(f"Audio streaming WebSocket disconnected for session: {session_id}")
+    except Exception as e:
+        logger.error(f"Audio streaming WebSocket error: {e}")
+        manager.disconnect(websocket)
+    finally:
+        logger.info(f"Audio streaming session ended: {session_id}")
 
 
 @app.websocket("/ws")
