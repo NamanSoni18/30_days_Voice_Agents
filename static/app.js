@@ -900,19 +900,27 @@ document.addEventListener("DOMContentLoaded", function () {
         } else if (data.type === "transcription_ready") {
           updateStreamingStatus("🎯 " + data.message, "success");
         } else if (data.type === "final_transcript") {
-          // Display final transcription prominently
+          // Display final transcription prominently only if we have text
           if (data.text && data.text.trim()) {
-            updateStreamingStatus(`🎙️ TRANSCRIPTION: "${data.text}"`, "recording");
+            updateStreamingStatus(`🎙️ FINAL: "${data.text}"`, "recording");
             displayTranscriptionOnUI(data.text, true);
-          } else {
-            updateStreamingStatus("🎙️ (Empty final transcript received)", "warning");
           }
         } else if (data.type === "partial_transcript") {
+          // Show partial transcripts in real-time for feedback
           if (data.text && data.text.trim()) {
-            updateStreamingStatus(`🎙️ (Partial) ${data.text}`, "info");
+            updateStreamingStatus(`🎙️ ${data.text}`, "info");
             displayTranscriptionOnUI(data.text, false);
+          }
+        } else if (data.type === "turn_end") {
+          // Handle turn detection - user has stopped talking
+          updateStreamingStatus("🛑 Turn ended - User stopped talking", "success");
+          if (data.final_transcript && data.final_transcript.trim()) {
+            updateStreamingStatus(`✅ TURN COMPLETE: "${data.final_transcript}"`, "success");
+            displayTranscriptionOnUI(data.final_transcript, true);
+            showCompleteTranscription(data.final_transcript);
           } else {
-            updateStreamingStatus("🎙️ (Empty partial transcript)", "info");
+            updateStreamingStatus("⚠️ Turn ended but no speech detected", "warning");
+            showNoSpeechMessage();
           }
         } else if (data.type === "transcription_complete") {
           if (data.text && data.text.trim()) {

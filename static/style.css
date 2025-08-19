@@ -1401,8 +1401,6 @@ main {
 .transcription-text-live::-webkit-scrollbar-thumb:hover {
     background: #5a6fd8;
 }
-
-/* Complete Transcription Styles */
 .complete-transcription-area {
     margin-top: 20px;
     background: linear-gradient(135deg, #e8f5e8, #f0fff4);

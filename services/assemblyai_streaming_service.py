@@ -47,23 +47,40 @@ class AssemblyAIStreamingService:
     
     def on_turn(self, client: Type[StreamingClient], event: TurnEvent):
         try:
-            # Only process non-empty transcriptions
-            if event.transcript.strip():
-                if self.transcription_callback and self.loop:
-                    transcript_data = {
-                        "type": "final_transcript" if event.end_of_turn else "partial_transcript",
-                        "text": event.transcript,
+            # Always process the transcription, even if empty, to handle turn detection
+            if self.transcription_callback and self.loop:
+                transcript_data = {
+                    "type": "final_transcript" if event.end_of_turn else "partial_transcript",
+                    "text": event.transcript,
+                    "confidence": getattr(event, 'end_of_turn_confidence', None),
+                    "is_final": event.end_of_turn,
+                    "turn_order": getattr(event, 'turn_order', None),
+                    "turn_is_formatted": getattr(event, 'turn_is_formatted', False),
+                    "end_of_turn": event.end_of_turn
+                }
+                try:
+                    coro = self.transcription_callback(transcript_data)
+                    if coro is not None:
+                        asyncio.run_coroutine_threadsafe(coro, self.loop)
+                except Exception as cb_error:
+                    logger.error(f"Error in transcription callback: {cb_error}")
+            
+            # Send a separate turn end notification when the user stops talking
+            if event.end_of_turn and self.websocket_callback and self.loop:
+                try:
+                    turn_end_data = {
+                        "type": "turn_end",
+                        "message": "User has stopped talking",
+                        "final_transcript": event.transcript,
                         "confidence": getattr(event, 'end_of_turn_confidence', None),
-                        "is_final": event.end_of_turn,
                         "turn_order": getattr(event, 'turn_order', None),
                         "turn_is_formatted": getattr(event, 'turn_is_formatted', False)
                     }
-                    try:
-                        coro = self.transcription_callback(transcript_data)
-                        if coro is not None:
-                            asyncio.run_coroutine_threadsafe(coro, self.loop)
-                    except Exception as cb_error:
-                        logger.error(f"Error in transcription callback: {cb_error}")
+                    coro = self.websocket_callback(turn_end_data)
+                    if coro is not None:
+                        asyncio.run_coroutine_threadsafe(coro, self.loop)
+                except Exception as cb_error:
+                    logger.error(f"Error in turn end callback: {cb_error}")
                 
         except Exception as e:
             logger.error(f"Error processing turn event: {e}")
@@ -98,7 +115,6 @@ class AssemblyAIStreamingService:
                 logger.error(f"Error in error callback: {cb_error}")
         
     async def start_streaming_transcription(self, websocket_callback=None):
-        """Start Universal Streaming transcription session"""
         try:
             self.websocket_callback = websocket_callback
             self.is_streaming = True
