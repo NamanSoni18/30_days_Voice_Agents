@@ -864,6 +864,9 @@ document.addEventListener("DOMContentLoaded", function () {
       console.log("Starting audio streaming...");
       updateConnectionStatus("connecting", "Connecting...");
 
+      // Clear any previous transcriptions
+      clearPreviousTranscriptions();
+
       // Connect to WebSocket
       audioStreamSocket = new WebSocket(`ws://localhost:8000/ws/audio-stream`);
 
@@ -879,10 +882,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (data.type === "audio_stream_ready") {
           updateStreamingStatus(
-            `Ready to stream audio. Session: ${data.session_id}`,
+            `Ready to stream audio with transcription. Session: ${data.session_id}`,
             "info"
           );
           streamingSessionId.textContent = `Session: ${data.session_id}`;
+          if (data.transcription_enabled) {
+            updateStreamingStatus("🎙️ Real-time transcription enabled", "success");
+          }
           startRecordingForStreaming();
         } else if (data.type === "chunk_ack") {
           updateStreamingStatus(
@@ -891,6 +897,44 @@ document.addEventListener("DOMContentLoaded", function () {
           );
         } else if (data.type === "command_response") {
           updateStreamingStatus(data.message, "info");
+        } else if (data.type === "transcription_ready") {
+          updateStreamingStatus("🎯 " + data.message, "success");
+        } else if (data.type === "final_transcript") {
+          // Display final transcription prominently
+          if (data.text && data.text.trim()) {
+            updateStreamingStatus(`🎙️ TRANSCRIPTION: "${data.text}"`, "recording");
+            displayTranscriptionOnUI(data.text, true);
+          } else {
+            updateStreamingStatus("🎙️ (Empty final transcript received)", "warning");
+          }
+        } else if (data.type === "partial_transcript") {
+          if (data.text && data.text.trim()) {
+            updateStreamingStatus(`🎙️ (Partial) ${data.text}`, "info");
+            displayTranscriptionOnUI(data.text, false);
+          } else {
+            updateStreamingStatus("🎙️ (Empty partial transcript)", "info");
+          }
+        } else if (data.type === "transcription_complete") {
+          if (data.text && data.text.trim()) {
+            updateStreamingStatus(`✅ COMPLETE TRANSCRIPTION: "${data.text}"`, "success");
+            displayTranscriptionOnUI(data.text, true);
+            showCompleteTranscription(data.text);
+          } else {
+            updateStreamingStatus("⚠️ No speech detected in recording", "warning");
+            showNoSpeechMessage();
+          }
+        } else if (data.type === "streaming_complete") {
+          updateStreamingStatus(`🎯 ${data.message}`, "success");
+          if (data.transcription && data.transcription.trim()) {
+            showCompleteTranscription(data.transcription);
+          } else {
+            updateStreamingStatus("⚠️ Recording completed but no speech was detected", "warning");
+            showNoSpeechMessage();
+          }
+        } else if (data.type === "transcription_error") {
+          updateStreamingStatus("❌ Transcription error: " + data.message, "error");
+        } else if (data.type === "transcription_stopped") {
+          updateStreamingStatus("🛑 " + data.message, "warning");
         }
       };
 
@@ -918,33 +962,45 @@ document.addEventListener("DOMContentLoaded", function () {
   async function startRecordingForStreaming() {
     try {
       audioStreamStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      audioStreamRecorder = new MediaRecorder(audioStreamStream, {
-        mimeType: "audio/webm;codecs=opus",
+        audio: {
+          sampleRate: 16000,  // 16kHz for AssemblyAI
+          channelCount: 1,    // Mono
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
       });
 
-      audioStreamRecorder.ondataavailable = function (event) {
-        if (
-          event.data.size > 0 &&
-          audioStreamSocket &&
-          audioStreamSocket.readyState === WebSocket.OPEN
-        ) {
-          // Convert blob to array buffer and send as binary data
-          event.data.arrayBuffer().then((buffer) => {
-            audioStreamSocket.send(buffer);
-            console.log(`Sent audio chunk: ${buffer.byteLength} bytes`);
-          });
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 16000
+      });
+      
+      const source = audioContext.createMediaStreamSource(audioStreamStream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      
+      processor.onaudioprocess = function(e) {
+        if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.OPEN) {
+          const inputData = e.inputBuffer.getChannelData(0);
+          const pcmData = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32767));
+          }
+          audioStreamSocket.send(pcmData.buffer);
         }
       };
 
-      audioStreamRecorder.onstop = function () {
-        console.log("Audio streaming recording stopped");
-        if (audioStreamStream) {
-          audioStreamStream.getTracks().forEach((track) => track.stop());
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+      
+      // Store references for cleanup
+      audioStreamRecorder = {
+        stop: () => {
+          processor.disconnect();
+          source.disconnect();
+          audioContext.close();
         }
       };
-      audioStreamRecorder.start(1000); 
+      
       isStreaming = true;
       if (audioStreamBtn) {
         audioStreamBtn.innerHTML =
@@ -974,13 +1030,19 @@ document.addEventListener("DOMContentLoaded", function () {
   async function stopAudioStreaming() {
     try {
       isStreaming = false;
-      if (audioStreamRecorder && audioStreamRecorder.state !== "inactive") {
-        audioStreamRecorder.stop();
+      
+      // Stop the audio recording (either MediaRecorder or custom processor)
+      if (audioStreamRecorder) {
+        if (typeof audioStreamRecorder.stop === 'function') {
+          audioStreamRecorder.stop();
+        }
+        audioStreamRecorder = null;
       }
 
       // Stop media stream
       if (audioStreamStream) {
         audioStreamStream.getTracks().forEach((track) => track.stop());
+        audioStreamStream = null;
       }
       if (
         audioStreamSocket &&
@@ -1087,5 +1149,168 @@ document.addEventListener("DOMContentLoaded", function () {
         audioFilesList.innerHTML = '<p class="error">Error loading files.</p>';
       }
     }
+  }
+
+  // Function to clear previous transcription displays
+  function clearPreviousTranscriptions() {
+    // Clear live transcription area
+    const liveArea = document.getElementById('liveTranscriptionArea');
+    if (liveArea) {
+      liveArea.style.display = 'none';
+      const transcriptionText = document.getElementById('transcriptionText');
+      if (transcriptionText) {
+        transcriptionText.innerHTML = '';
+      }
+    }
+    
+    // Clear complete transcription area
+    const completeArea = document.getElementById('completeTranscriptionArea');
+    if (completeArea) {
+      completeArea.style.display = 'none';
+    }
+    
+    // Clear no speech area
+    const noSpeechArea = document.getElementById('noSpeechArea');
+    if (noSpeechArea) {
+      noSpeechArea.style.display = 'none';
+    }
+  }
+
+  // Function to display transcription on the UI
+  function displayTranscriptionOnUI(text, isFinal) {
+    // Create or update transcription display area
+    let transcriptionArea = document.getElementById('liveTranscriptionArea');
+    
+    if (!transcriptionArea) {
+      // Create transcription area if it doesn't exist
+      transcriptionArea = document.createElement('div');
+      transcriptionArea.id = 'liveTranscriptionArea';
+      transcriptionArea.className = 'live-transcription-area';
+      transcriptionArea.innerHTML = `
+        <h4>🎙️ Live Transcription:</h4>
+        <div id="transcriptionText" class="transcription-text-live"></div>
+      `;
+      
+      // Insert after the streaming status container
+      const statusContainer = document.getElementById('audioStreamStatus');
+      if (statusContainer) {
+        statusContainer.parentNode.insertBefore(transcriptionArea, statusContainer.nextSibling);
+      }
+    }
+    
+    const transcriptionText = document.getElementById('transcriptionText');
+    if (transcriptionText) {
+      if (isFinal) {
+        // For final transcriptions, add to the permanent list
+        const finalDiv = document.createElement('div');
+        finalDiv.className = 'final-transcription';
+        finalDiv.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${text}`;
+        transcriptionText.appendChild(finalDiv);
+        
+        // Clear partial text
+        const partialDiv = transcriptionText.querySelector('.partial-transcription');
+        if (partialDiv) {
+          partialDiv.remove();
+        }
+        
+        // Scroll to bottom
+        transcriptionText.scrollTop = transcriptionText.scrollHeight;
+      } else {
+        // For partial transcriptions, update the temporary display
+        let partialDiv = transcriptionText.querySelector('.partial-transcription');
+        if (!partialDiv) {
+          partialDiv = document.createElement('div');
+          partialDiv.className = 'partial-transcription';
+          transcriptionText.appendChild(partialDiv);
+        }
+        partialDiv.innerHTML = `<em>🔄 ${text}</em>`;
+      }
+      
+      // Show the transcription area
+      transcriptionArea.style.display = 'block';
+    }
+  }
+
+  // Function to show complete final transcription in a highlighted way
+  function showCompleteTranscription(text) {
+    if (!text || text.trim() === '') return;
+    
+    // Create or update the complete transcription display
+    let completeArea = document.getElementById('completeTranscriptionArea');
+    
+    if (!completeArea) {
+      completeArea = document.createElement('div');
+      completeArea.id = 'completeTranscriptionArea';
+      completeArea.className = 'complete-transcription-area';
+      completeArea.innerHTML = `
+        <h4>✅ Complete Transcription:</h4>
+        <div id="completeTranscriptionText" class="complete-transcription-text"></div>
+      `;
+      
+      // Insert after the live transcription area or streaming status
+      const liveArea = document.getElementById('liveTranscriptionArea');
+      const statusContainer = document.getElementById('audioStreamStatus');
+      const insertAfter = liveArea || statusContainer;
+      
+      if (insertAfter) {
+        insertAfter.parentNode.insertBefore(completeArea, insertAfter.nextSibling);
+      }
+    }
+    
+    const completeText = document.getElementById('completeTranscriptionText');
+    if (completeText) {
+      completeText.innerHTML = `
+        <div class="transcription-result">
+          <span class="transcription-timestamp">${new Date().toLocaleTimeString()}</span>
+          <div class="transcription-content">"${text}"</div>
+        </div>
+      `;
+      completeArea.style.display = 'block';
+      
+      // Scroll into view
+      completeArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  // Function to show a message when no speech is detected
+  function showNoSpeechMessage() {
+    // Create or update the no speech message display
+    let noSpeechArea = document.getElementById('noSpeechArea');
+    
+    if (!noSpeechArea) {
+      noSpeechArea = document.createElement('div');
+      noSpeechArea.id = 'noSpeechArea';
+      noSpeechArea.className = 'no-speech-area';
+      noSpeechArea.innerHTML = `
+        <h4>🔇 No Speech Detected</h4>
+        <div class="no-speech-content">
+          <p>No speech was detected in your recording. Please try:</p>
+          <ul>
+            <li>Speaking more clearly and loudly</li>
+            <li>Recording for a longer duration (at least 2-3 seconds)</li>
+            <li>Checking your microphone permissions and volume</li>
+            <li>Ensuring you're close to your microphone</li>
+          </ul>
+        </div>
+      `;
+      
+      // Insert after the streaming status container
+      const statusContainer = document.getElementById('audioStreamStatus');
+      if (statusContainer) {
+        statusContainer.parentNode.insertBefore(noSpeechArea, statusContainer.nextSibling);
+      }
+    }
+    
+    noSpeechArea.style.display = 'block';
+    
+    // Hide the no speech message after 10 seconds
+    setTimeout(() => {
+      if (noSpeechArea) {
+        noSpeechArea.style.display = 'none';
+      }
+    }, 10000);
+    
+    // Scroll into view
+    noSpeechArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 });

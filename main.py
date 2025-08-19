@@ -7,6 +7,7 @@ import os
 import uuid
 import uvicorn
 import json
+import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -21,6 +22,7 @@ from services.stt_service import STTService
 from services.llm_service import LLMService
 from services.tts_service import TTSService
 from services.database_service import DatabaseService
+from services.assemblyai_streaming_service import AssemblyAIStreamingService
 from utils.logging_config import setup_logging, get_logger
 from utils.constants import get_fallback_message
 
@@ -43,6 +45,7 @@ stt_service: STTService = None
 llm_service: LLMService = None
 tts_service: TTSService = None
 database_service: DatabaseService = None
+assemblyai_streaming_service: AssemblyAIStreamingService = None
 
 
 def initialize_services() -> APIKeyConfig:
@@ -55,11 +58,12 @@ def initialize_services() -> APIKeyConfig:
         mongodb_url=os.getenv("MONGODB_URL", "mongodb://localhost:27017")
     )
     
-    global stt_service, llm_service, tts_service, database_service
+    global stt_service, llm_service, tts_service, database_service, assemblyai_streaming_service
     if config.are_keys_valid:
         stt_service = STTService(config.assemblyai_api_key)
         llm_service = LLMService(config.gemini_api_key)
         tts_service = TTSService(config.murf_api_key, config.murf_voice_id)
+        assemblyai_streaming_service = AssemblyAIStreamingService(config.assemblyai_api_key)
         logger.info("✅ All AI services initialized successfully")
     else:
         missing_keys = config.validate_keys()
@@ -330,25 +334,38 @@ async def chat_with_agent(
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
-    
+
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
         logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
-    
+
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
         logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
     
+    def is_connected(self, websocket: WebSocket) -> bool:
+        """Check if a WebSocket is still in active connections"""
+        return websocket in self.active_connections
+
     async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-    
+        if self.is_connected(websocket):
+            try:
+                await websocket.send_text(message)
+            except Exception as e:
+                logger.error(f"Error sending personal message: {e}")
+                self.disconnect(websocket)
+        else:
+            logger.debug("Attempted to send message to disconnected WebSocket")
+
     async def broadcast(self, message: str):
         for connection in self.active_connections:
             try:
                 await connection.send_text(message)
             except Exception as e:
                 logger.error(f"Error broadcasting to WebSocket: {e}")
+                self.disconnect(connection)
 manager = ConnectionManager()
 
 
@@ -359,13 +376,37 @@ async def audio_stream_websocket(websocket: WebSocket):
     audio_filename = f"streamed_audio_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
     audio_filepath = os.path.join("streamed_audio", audio_filename)
     os.makedirs("streamed_audio", exist_ok=True)
+    is_websocket_active = True
+    async def transcription_callback(transcript_data):
+        try:
+            if is_websocket_active and manager.is_connected(websocket):
+                await manager.send_personal_message(json.dumps(transcript_data), websocket)
+                # Only show final transcriptions
+                if transcript_data.get("type") == "final_transcript":
+                    print(f"📝 {transcript_data.get('text', '')}")
+            else:
+                logger.debug("Skipping transcription callback - WebSocket no longer active")
+        except Exception as e:
+            logger.error(f"Error sending transcription: {e}")
     
     try:
+        if assemblyai_streaming_service:
+            assemblyai_streaming_service.set_transcription_callback(transcription_callback)
+            async def safe_websocket_callback(msg):
+                if is_websocket_active and manager.is_connected(websocket):
+                    return await manager.send_personal_message(json.dumps(msg), websocket)
+                return None
+            
+            await assemblyai_streaming_service.start_streaming_transcription(
+                websocket_callback=safe_websocket_callback
+            )
+        
         welcome_message = {
             "type": "audio_stream_ready",
-            "message": "Audio streaming endpoint ready. Send binary audio data.",
+            "message": "Audio streaming endpoint ready with AssemblyAI transcription. Send binary audio data.",
             "session_id": session_id,
             "audio_filename": audio_filename,
+            "transcription_enabled": assemblyai_streaming_service is not None,
             "timestamp": datetime.now().isoformat()
         }
         await manager.send_personal_message(json.dumps(welcome_message), websocket)
@@ -381,17 +422,34 @@ async def audio_stream_websocket(websocket: WebSocket):
                     
                     if "text" in message:
                         command = message["text"]
-                        logger.info(f"Received command: {command}")
                         
                         if command == "start_streaming":
                             response = {
                                 "type": "command_response",
-                                "message": "Ready to receive audio chunks",
+                                "message": "Ready to receive audio chunks with real-time transcription",
                                 "status": "streaming_ready"
                             }
                             await manager.send_personal_message(json.dumps(response), websocket)
                             
                         elif command == "stop_streaming":
+                            response = {
+                                "type": "command_response",
+                                "message": "Stopping audio stream, waiting for final transcription...",
+                                "status": "stopping"
+                            }
+                            await manager.send_personal_message(json.dumps(response), websocket)
+                            if assemblyai_streaming_service:
+                                async def safe_stop_callback(msg):
+                                    if manager.is_connected(websocket):
+                                        return await manager.send_personal_message(json.dumps(msg), websocket)
+                                    return None
+                                
+                                await assemblyai_streaming_service.stop_streaming_transcription(
+                                    websocket_callback=safe_stop_callback
+                                )
+                            await asyncio.sleep(3)
+                            is_websocket_active = False
+                            
                             response = {
                                 "type": "command_response", 
                                 "message": f"Audio streaming completed. Saved {chunk_count} chunks ({total_bytes} bytes) to {audio_filename}",
@@ -405,18 +463,18 @@ async def audio_stream_websocket(websocket: WebSocket):
                             break
                             
                     elif "bytes" in message:
-                        # Handle binary audio data
                         audio_chunk = message["bytes"]
                         chunk_size = len(audio_chunk)
-                        
-                        # Write audio chunk to file
                         audio_file.write(audio_chunk)
                         audio_file.flush()
+                        
+                        if assemblyai_streaming_service:
+                            await assemblyai_streaming_service.send_audio_chunk(audio_chunk)
                         
                         chunk_count += 1
                         total_bytes += chunk_size
                         
-                        logger.info(f"Received audio chunk {chunk_count}: {chunk_size} bytes")
+                        # Send acknowledgment without verbose logging
                         ack_response = {
                             "type": "chunk_ack",
                             "chunk_number": chunk_count,
@@ -436,12 +494,17 @@ async def audio_stream_websocket(websocket: WebSocket):
                     break
                     
     except WebSocketDisconnect:
+        is_websocket_active = False
         manager.disconnect(websocket)
         logger.info(f"Audio streaming WebSocket disconnected for session: {session_id}")
     except Exception as e:
+        is_websocket_active = False
         logger.error(f"Audio streaming WebSocket error: {e}")
         manager.disconnect(websocket)
     finally:
+        is_websocket_active = False
+        if assemblyai_streaming_service:
+            await assemblyai_streaming_service.stop_streaming_transcription()
         logger.info(f"Audio streaming session ended: {session_id}")
 
 
