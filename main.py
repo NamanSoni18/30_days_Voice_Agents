@@ -381,13 +381,83 @@ async def audio_stream_websocket(websocket: WebSocket):
         try:
             if is_websocket_active and manager.is_connected(websocket):
                 await manager.send_personal_message(json.dumps(transcript_data), websocket)
-                # Only show final transcriptions
+                # Only show final transcriptions and trigger LLM streaming
                 if transcript_data.get("type") == "final_transcript":
-                    print(f"📝 {transcript_data.get('text', '')}")
+                    final_text = transcript_data.get('text', '').strip()
+                    print(f"📝 Final transcript: {final_text}")
+                    
+                    # Trigger LLM streaming response if we have text
+                    if final_text and llm_service:
+                        await handle_llm_streaming(final_text, session_id, websocket)
+                        
             else:
                 logger.debug("Skipping transcription callback - WebSocket no longer active")
         except Exception as e:
             logger.error(f"Error sending transcription: {e}")
+
+    async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket):
+        """Handle LLM streaming response for a user message"""
+        try:
+            print(f"🤖 Starting LLM streaming for: {user_message}")
+            
+            # Get chat history
+            try:
+                chat_history = await database_service.get_chat_history(session_id)
+                await database_service.add_message_to_history(session_id, "user", user_message)
+            except Exception as e:
+                logger.error(f"Chat history error: {str(e)}")
+                chat_history = []
+            
+            # Send LLM streaming start notification
+            start_message = {
+                "type": "llm_streaming_start",
+                "message": "LLM is generating response...",
+                "user_message": user_message,
+                "timestamp": datetime.now().isoformat()
+            }
+            await manager.send_personal_message(json.dumps(start_message), websocket)
+            accumulated_response = ""
+            
+            # Stream LLM response
+            async for chunk in llm_service.generate_streaming_response(user_message, chat_history):
+                if chunk:
+                    accumulated_response += chunk
+                    print(f"🤖 LLM chunk: {chunk}", end="", flush=True)
+                    
+                    # Send chunk to client
+                    chunk_message = {
+                        "type": "llm_streaming_chunk",
+                        "chunk": chunk,
+                        "accumulated_length": len(accumulated_response),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    await manager.send_personal_message(json.dumps(chunk_message), websocket)
+            
+            print()
+            print(f"🤖 LLM streaming completed. Total response: {len(accumulated_response)} characters")
+            try:
+                await database_service.add_message_to_history(session_id, "assistant", accumulated_response)
+            except Exception as e:
+                logger.error(f"Failed to save assistant response to history: {str(e)}")
+            
+            # Send completion notification
+            complete_message = {
+                "type": "llm_streaming_complete",
+                "message": "LLM response completed",
+                "complete_response": accumulated_response,
+                "total_length": len(accumulated_response),
+                "timestamp": datetime.now().isoformat()
+            }
+            await manager.send_personal_message(json.dumps(complete_message), websocket)
+            
+        except Exception as e:
+            logger.error(f"Error in LLM streaming: {str(e)}")
+            error_message = {
+                "type": "llm_streaming_error",
+                "message": f"Error generating LLM response: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
+            await manager.send_personal_message(json.dumps(error_message), websocket)
     
     try:
         if assemblyai_streaming_service:
