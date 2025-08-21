@@ -23,6 +23,7 @@ from services.llm_service import LLMService
 from services.tts_service import TTSService
 from services.database_service import DatabaseService
 from services.assemblyai_streaming_service import AssemblyAIStreamingService
+from services.murf_websocket_service import MurfWebSocketService
 from utils.logging_config import setup_logging, get_logger
 from utils.constants import get_fallback_message
 
@@ -46,6 +47,7 @@ llm_service: LLMService = None
 tts_service: TTSService = None
 database_service: DatabaseService = None
 assemblyai_streaming_service: AssemblyAIStreamingService = None
+murf_websocket_service: MurfWebSocketService = None
 
 
 def initialize_services() -> APIKeyConfig:
@@ -58,12 +60,13 @@ def initialize_services() -> APIKeyConfig:
         mongodb_url=os.getenv("MONGODB_URL", "mongodb://localhost:27017")
     )
     
-    global stt_service, llm_service, tts_service, database_service, assemblyai_streaming_service
+    global stt_service, llm_service, tts_service, database_service, assemblyai_streaming_service, murf_websocket_service
     if config.are_keys_valid:
         stt_service = STTService(config.assemblyai_api_key)
         llm_service = LLMService(config.gemini_api_key)
         tts_service = TTSService(config.murf_api_key, config.murf_voice_id)
         assemblyai_streaming_service = AssemblyAIStreamingService(config.assemblyai_api_key)
+        murf_websocket_service = MurfWebSocketService(config.murf_api_key, config.murf_voice_id)
         logger.info("✅ All AI services initialized successfully")
     else:
         missing_keys = config.validate_keys()
@@ -396,7 +399,7 @@ async def audio_stream_websocket(websocket: WebSocket):
             logger.error(f"Error sending transcription: {e}")
 
     async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket):
-        """Handle LLM streaming response for a user message"""
+        """Handle LLM streaming response and send to Murf WebSocket for TTS"""
         try:
             print(f"🤖 Starting LLM streaming for: {user_message}")
             
@@ -416,25 +419,96 @@ async def audio_stream_websocket(websocket: WebSocket):
                 "timestamp": datetime.now().isoformat()
             }
             await manager.send_personal_message(json.dumps(start_message), websocket)
+            
             accumulated_response = ""
             
-            # Stream LLM response
-            async for chunk in llm_service.generate_streaming_response(user_message, chat_history):
-                if chunk:
-                    accumulated_response += chunk
-                    print(f"🤖 LLM chunk: {chunk}", end="", flush=True)
+            # Connect to Murf WebSocket
+            try:
+                await murf_websocket_service.connect()
+                logger.info("Connected to Murf WebSocket for streaming TTS")
+                
+                # Create async generator for LLM streaming
+                async def llm_text_stream():
+                    nonlocal accumulated_response
+                    async for chunk in llm_service.generate_streaming_response(user_message, chat_history):
+                        if chunk:
+                            accumulated_response += chunk
+                            print(f"🤖 LLM chunk: {chunk}", end="", flush=True)
+                            
+                            # Send chunk to client
+                            chunk_message = {
+                                "type": "llm_streaming_chunk",
+                                "chunk": chunk,
+                                "accumulated_length": len(accumulated_response),
+                                "timestamp": datetime.now().isoformat()
+                            }
+                            await manager.send_personal_message(json.dumps(chunk_message), websocket)
+                            
+                            yield chunk
+                
+                # Send LLM stream to Murf and receive base64 audio
+                tts_start_message = {
+                    "type": "tts_streaming_start",
+                    "message": "Starting TTS streaming with Murf WebSocket...",
+                    "timestamp": datetime.now().isoformat()
+                }
+                await manager.send_personal_message(json.dumps(tts_start_message), websocket)
+                
+                audio_chunk_count = 0
+                total_audio_size = 0
+                
+                # Stream LLM text to Murf and get base64 audio back
+                async for audio_response in murf_websocket_service.stream_text_to_audio(llm_text_stream()):
+                    if audio_response["type"] == "audio_chunk":
+                        audio_chunk_count += 1
+                        total_audio_size += audio_response["chunk_size"]
+                        
+                        # Send audio data to client
+                        audio_message = {
+                            "type": "tts_audio_chunk",
+                            "audio_base64": audio_response["audio_base64"],
+                            "chunk_number": audio_response["chunk_number"],
+                            "chunk_size": audio_response["chunk_size"],
+                            "total_size": audio_response["total_size"],
+                            "is_final": audio_response["is_final"],
+                            "timestamp": audio_response["timestamp"]
+                        }
+                        await manager.send_personal_message(json.dumps(audio_message), websocket)
+                        
+                        # Check if this is the final chunk
+                        if audio_response["is_final"]:
+                            print(f"\n🎵 TTS streaming completed. Total audio chunks: {audio_chunk_count}")
+                            break
                     
-                    # Send chunk to client
-                    chunk_message = {
-                        "type": "llm_streaming_chunk",
-                        "chunk": chunk,
-                        "accumulated_length": len(accumulated_response),
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    await manager.send_personal_message(json.dumps(chunk_message), websocket)
+                    elif audio_response["type"] == "status":
+                        # Send status updates to client
+                        status_message = {
+                            "type": "tts_status",
+                            "data": audio_response["data"],
+                            "timestamp": audio_response["timestamp"]
+                        }
+                        await manager.send_personal_message(json.dumps(status_message), websocket)
+                
+            except Exception as e:
+                logger.error(f"Error with Murf WebSocket streaming: {str(e)}")
+                error_message = {
+                    "type": "tts_streaming_error",
+                    "message": f"Error with Murf WebSocket: {str(e)}",
+                    "timestamp": datetime.now().isoformat()
+                }
+                await manager.send_personal_message(json.dumps(error_message), websocket)
+            
+            finally:
+                # Disconnect from Murf WebSocket
+                try:
+                    await murf_websocket_service.disconnect()
+                except Exception as e:
+                    logger.error(f"Error disconnecting from Murf WebSocket: {str(e)}")
             
             print()
             print(f"🤖 LLM streaming completed. Total response: {len(accumulated_response)} characters")
+            
+            # Save to chat history
             try:
                 await database_service.add_message_to_history(session_id, "assistant", accumulated_response)
             except Exception as e:
@@ -443,9 +517,11 @@ async def audio_stream_websocket(websocket: WebSocket):
             # Send completion notification
             complete_message = {
                 "type": "llm_streaming_complete",
-                "message": "LLM response completed",
+                "message": "LLM response and TTS streaming completed",
                 "complete_response": accumulated_response,
                 "total_length": len(accumulated_response),
+                "audio_chunks_received": audio_chunk_count,
+                "total_audio_size": total_audio_size,
                 "timestamp": datetime.now().isoformat()
             }
             await manager.send_personal_message(json.dumps(complete_message), websocket)

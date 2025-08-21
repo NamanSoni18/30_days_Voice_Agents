@@ -1,15 +1,21 @@
 # 30 Days of Voice Agents - Real-Time Streaming Voice AI Agent
 
-A cutting-edge conversational AI voice agent with **real-time streaming capabilities**, built with FastAPI and WebSockets. Features live audio streaming, real-time transcription, streaming LLM responses, and seamless voice interactions. Experience natural voice conversations with AI through advanced streaming technology and intuitive interfaces.
+A cutting-edge conversational AI voice agent with **revolutionary real-time streaming capabilities**, built with FastAPI and WebSockets. Features live audio streaming, real-time transcription, streaming LLM responses, **Murf WebSocket TTS integration**, and seamless voice interactions. Experience complete voice-to-voice con3. **Experience Live Transcription**: Speak and see words appear instantly
+4. **Observe Streaming LLM**: Watch AI responses generate in real-time
+5. **View Real-Time TTS**: See base64 audio chunks printed to console for Murf streaming
+6. **Review Session History**: Check saved conversations and audio filessations with AI through advanced streaming technology, live audio generation, and intuitive interfaces.
 
 ## ✨ Revolutionary Features
 
-### � **Real-Time Streaming Audio Pipeline (NEW)**
+### 🎵 **Real-Time Streaming Audio Pipeline (NEW)**
 - **Live Audio Streaming**: WebSocket-based real-time audio transmission with 16kHz PCM encoding
 - **Streaming Speech Recognition**: AssemblyAI Universal Streaming for instant transcription as you speak
 - **Streaming LLM Responses**: Google Gemini 2.5 Flash with real-time text generation and live updates
+- **Murf WebSocket TTS Integration**: Revolutionary real-time text-to-speech with streaming base64 audio output
+- **Complete Voice-to-Voice Pipeline**: End-to-end streaming from voice input to audio response generation
 - **Real-Time Conversation Flow**: Complete voice-to-voice pipeline with streaming at every stage
 - **Live Transcription Display**: See your words appear in real-time as you speak
+- **Live Audio Generation**: Murf WebSocket streaming delivers base64 encoded audio chunks in real-time
 - **Adaptive Audio Processing**: Intelligent chunk processing with echo cancellation and noise suppression
 - **Session-Based Streaming**: Persistent streaming sessions with automatic audio file saving
 
@@ -21,12 +27,14 @@ A cutting-edge conversational AI voice agent with **real-time streaming capabili
 - **Seamless Mode Switching**: Choose between traditional and streaming modes based on your needs
 
 ### 🤖 **Advanced AI Streaming Engine**
-- **Multi-Stage Streaming**: Real-time speech → live transcription → streaming AI → voice synthesis
+- **Multi-Stage Streaming**: Real-time speech → live transcription → streaming AI → **streaming voice synthesis**
 - **Context-Aware Streaming**: AI maintains conversation context during live streaming sessions
 - **Intelligent Turn Detection**: AssemblyAI's advanced end-of-turn detection for natural conversation flow
 - **Streaming Response Accumulation**: Real-time text streaming with complete response preservation
+- **Live Audio Generation**: Murf WebSocket integration delivers streaming TTS with base64 audio chunks
 - **Live Processing Visualization**: Watch each stage of AI processing in real-time
 - **Adaptive Response Generation**: Context-aware streaming responses with conversation history
+- **Real-Time TTS Pipeline**: Complete text-to-speech streaming with voice configuration and audio delivery
 
 ### 🔄 **Enhanced Session & Memory Management**
 - **Streaming Session Persistence**: MongoDB storage for live streaming conversations
@@ -64,6 +72,7 @@ A cutting-edge conversational AI voice agent with **real-time streaming capabili
 │   ├── assemblyai_streaming_service.py  # Real-time streaming transcription (NEW)
 │   ├── llm_service.py     # Language Model service with streaming support (Enhanced)
 │   ├── tts_service.py     # Text-to-Speech service (Murf AI)
+│   ├── murf_websocket_service.py  # Real-time Murf WebSocket TTS streaming (NEW)
 │   └── database_service.py # Database operations (MongoDB with fallback)
 ├── utils/
 │   ├── logging_config.py  # Centralized logging configuration
@@ -90,8 +99,10 @@ The application now features a **revolutionary streaming architecture** with rea
 - **WebSocket Audio Streaming**: `/ws/audio-stream` endpoint for live audio transmission
 - **AssemblyAI Universal Streaming**: Real-time speech-to-text as you speak
 - **Streaming LLM Responses**: Google Gemini with live text generation and accumulation
+- **Murf WebSocket TTS Integration**: Real-time text-to-speech streaming with base64 audio chunks
 - **Live Session Management**: Real-time conversation tracking with MongoDB persistence
-- **Concurrent Processing**: Simultaneous audio streaming, transcription, and AI processing
+- **Complete Voice-to-Voice Pipeline**: End-to-end streaming from voice input to audio response
+- **Concurrent Processing**: Simultaneous audio streaming, transcription, AI processing, and voice generation
 
 #### **📋 Enhanced Models Layer** (`models/`)
 - **Streaming-Aware Schemas**: Extended Pydantic models for real-time data validation
@@ -101,6 +112,7 @@ The application now features a **revolutionary streaming architecture** with rea
 #### **🛠️ Advanced Services Layer** (`services/`)
 - **AssemblyAI Streaming Service**: NEW real-time transcription with turn detection
 - **Enhanced LLM Service**: Streaming response generation with context preservation
+- **Murf WebSocket Service**: NEW real-time text-to-speech streaming with base64 audio output
 - **Traditional Services**: Maintained for backward compatibility and fallback
 - **Connection Management**: WebSocket lifecycle and connection pooling
 
@@ -122,8 +134,10 @@ The application now features a **revolutionary streaming architecture** with rea
 2. **Live Audio Capture**: 16kHz PCM audio streaming with optimized chunk processing
 3. **Real-Time Transcription**: AssemblyAI Universal Streaming provides instant text feedback
 4. **Streaming LLM Processing**: Google Gemini generates responses in real-time chunks
-5. **Live Response Display**: Text appears character by character as the AI thinks
-6. **Automatic Session Saving**: All streaming sessions saved to MongoDB and audio files
+5. **Live TTS Streaming**: Murf WebSocket integration delivers streaming base64 audio chunks
+6. **Live Response Display**: Text appears character by character as the AI thinks
+7. **Real-Time Audio Output**: Base64 audio chunks printed to console for voice synthesis
+8. **Automatic Session Saving**: All streaming sessions saved to MongoDB and audio files
 
 #### **🔵 Traditional Mode** (Enhanced)
 1. **Smart Button Interface**: Improved single-button control with streaming fallback
@@ -144,6 +158,8 @@ The application now features a **revolutionary streaming architecture** with rea
 - **Context Preservation**: Full conversation history maintained during streaming
 - **Turn-Based Processing**: Intelligent detection of when user stops speaking
 - **Response Accumulation**: Complete responses saved alongside streaming chunks
+- **Real-Time TTS Integration**: Streaming text sent to Murf WebSocket for live audio generation
+- **Base64 Audio Streaming**: Console output displays real-time base64 encoded audio chunks
 
 #### **📊 Real-Time Monitoring**
 - **Connection Status**: Live WebSocket connection monitoring
@@ -214,7 +230,7 @@ The application now features a **revolutionary streaming architecture** with rea
 | `GET` | `/agent/chat/{session_id}/history` | Retrieve chat history for a specific session |
 | `GET` | `/api/backend` | Backend connectivity test endpoint |
 | `GET` | `/api/streamed-audio` | **NEW**: List all real-time streamed audio files with metadata |
-| `WebSocket` | `/ws/audio-stream` | **NEW**: Real-time audio streaming with live transcription and LLM streaming |
+| `WebSocket` | `/ws/audio-stream` | **NEW**: Real-time audio streaming with live transcription, LLM streaming, and Murf TTS |
 | `WebSocket` | `/ws` | Basic WebSocket connection for bidirectional communication |
 | `GET` | `/docs` | Interactive API documentation (Swagger UI) |
 | `GET` | `/redoc` | Alternative API documentation (ReDoc) |
@@ -229,6 +245,8 @@ The application now features a **revolutionary streaming architecture** with rea
 - ✅ **Live Audio Transmission**: Real-time 16kHz PCM audio streaming
 - ✅ **Instant Transcription**: AssemblyAI Universal Streaming for live speech-to-text
 - ✅ **Streaming LLM Responses**: Google Gemini with real-time text generation
+- ✅ **Murf WebSocket TTS**: Real-time text-to-speech streaming with base64 audio output
+- ✅ **Live Audio Generation**: Streaming base64 audio chunks printed to console
 - ✅ **Conversation Persistence**: Automatic MongoDB storage of streaming sessions
 - ✅ **Audio File Recording**: Automatic saving of all streamed audio sessions
 - ✅ **Connection Management**: Advanced WebSocket lifecycle handling
@@ -306,6 +324,43 @@ The application now features a **revolutionary streaming architecture** with rea
   "total_length": 75,
   "timestamp": "2025-08-20T10:39:48.123456"
 }
+
+// Murf TTS streaming start (NEW)
+{
+  "type": "murf_tts_streaming_start",
+  "message": "Starting Murf WebSocket TTS streaming",
+  "text_to_convert": "I'm doing great, thank you for asking! How can I help you today?",
+  "voice_config": {
+    "voiceId": "en-IN-aarav",
+    "style": "Conversational",
+    "rate": 0,
+    "pitch": 0,
+    "variation": 1
+  },
+  "context_id": "voice_agent_context_static",
+  "timestamp": "2025-08-20T10:39:49.123456"
+}
+
+// Real-time base64 audio chunks (NEW)
+{
+  "type": "murf_audio_chunk",
+  "chunk_number": 1,
+  "base64_audio": "UklGRvBVAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YcxVAAD...",
+  "audio_size": 21848,
+  "context_id": "voice_agent_context_static",
+  "final": false,
+  "timestamp": "2025-08-20T10:39:50.123456"
+}
+
+// TTS streaming completion (NEW)
+{
+  "type": "murf_tts_complete",
+  "message": "Murf TTS streaming completed",
+  "total_chunks": 76,
+  "total_audio_size": 458392,
+  "context_id": "voice_agent_context_static",
+  "timestamp": "2025-08-20T10:39:55.123456"
+}
 ```
 
 #### Streaming Audio API
@@ -345,13 +400,85 @@ Returns comprehensive metadata about all streaming sessions:
 1. **Create WebSocket Request**: Connect to `ws://127.0.0.1:8000/ws/audio-stream`
 2. **Send Start Command**: `{"text": "start_streaming"}`
 3. **Send Binary Audio**: Stream raw 16kHz PCM audio data
-4. **Observe Real-Time Responses**: See transcription and LLM streaming
+4. **Observe Real-Time Responses**: See transcription, LLM streaming, and TTS base64 audio
 5. **Send Stop Command**: `{"text": "stop_streaming"}`
 
 #### **Audio File Testing**
 1. **List Streaming Sessions**: `GET /api/streamed-audio`
 2. **Review File Metadata**: Check sizes, timestamps, and session details
 3. **Monitor Storage**: Track streaming session storage and cleanup
+
+### 🎵 Murf WebSocket TTS Integration (NEW)
+
+This project features a **revolutionary implementation** of Murf's WebSocket TTS API for real-time text-to-speech streaming. This is one of the first working implementations demonstrating live streaming TTS with base64 audio output.
+
+#### **Key Features**
+- **Real-Time TTS Streaming**: Live text-to-speech conversion with instant audio generation
+- **Base64 Audio Output**: Streaming base64 encoded audio chunks printed to console
+- **WebSocket Connection Management**: Robust connection handling with automatic reconnection
+- **Voice Configuration**: Customizable voice settings (voice ID, style, rate, pitch, variation)
+- **Static Context Management**: Consistent context ID usage for streaming sessions
+- **Error Recovery**: Intelligent error handling with context limit management
+
+#### **Implementation Highlights**
+```python
+# services/murf_websocket_service.py - Revolutionary Murf WebSocket Integration
+class MurfWebSocketService:
+    async def connect(self) -> bool:
+        """Establish WebSocket connection to Murf TTS API"""
+        
+    async def stream_text_to_audio(self, text_chunks: AsyncGenerator[str, None]) -> AsyncGenerator[str, None]:
+        """Stream LLM text chunks to Murf and yield base64 audio responses"""
+        
+    async def send_single_text(self, text: str) -> None:
+        """Send complete text for TTS conversion with real-time audio streaming"""
+```
+
+#### **Console Output Example**
+```
+🎵 === MURF BASE64 AUDIO CHUNK 1 ===
+Context ID: voice_agent_context_static
+Base64 Audio Size: 21848 characters
+Base64 Audio: UklGRvBVAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YcxVAAD...
+Final: False
+=== END AUDIO CHUNK 1 ===
+
+🎵 === MURF BASE64 AUDIO CHUNK 2 ===
+Context ID: voice_agent_context_static
+Base64 Audio Size: 15420 characters
+Base64 Audio: DgAOAA4ADgAOAA4ADgAOAA4ADgAOAA4ADgAOAA4ADgAOAA4ADgAOAA4ADgAO...
+Final: False
+=== END AUDIO CHUNK 2 ===
+```
+
+#### **Voice Configuration**
+```json
+{
+  "voice_config": {
+    "voiceId": "en-IN-aarav",
+    "style": "Conversational", 
+    "rate": 0,
+    "pitch": 0,
+    "variation": 1
+  },
+  "context_id": "voice_agent_context_static"
+}
+```
+
+#### **Testing the Murf Integration**
+You can test the Murf WebSocket TTS integration using the provided test script:
+
+```bash
+# Run the standalone Murf WebSocket test
+python test_murf_websocket.py
+```
+
+This test demonstrates:
+- WebSocket connection establishment
+- Voice configuration setup
+- Text streaming to TTS
+- Real-time base64 audio chunk reception
+- Console output of streaming audio data
 
 ### Traditional Chat Agent API (`/agent/chat/{session_id}`)
 
@@ -439,6 +566,7 @@ Retrieve conversation history for a specific session.
 - **[WebSockets](https://websockets.readthedocs.io/)**: Real-time bidirectional streaming communication
 - **[AssemblyAI Universal Streaming](https://www.assemblyai.com/docs/api-reference/streaming)**: Live speech-to-text transcription
 - **[Google Gemini Streaming](https://ai.google.dev/api/generate-content#method:-models.streamgeneratecontent)**: Real-time LLM response generation
+- **[Murf WebSocket API](https://murf.ai)**: Revolutionary real-time text-to-speech streaming with base64 audio output
 - **Binary Audio Processing**: 16kHz PCM streaming with optimized chunk handling
 - **Asynchronous Event Loops**: Non-blocking real-time processing architecture
 
@@ -452,7 +580,7 @@ Retrieve conversation history for a specific session.
 ### AI Services Integration  
 - **[AssemblyAI](https://www.assemblyai.com/)**: Dual-mode speech processing (traditional + streaming)
 - **[Google Gemini](https://ai.google.dev/)**: Advanced LLM with streaming response capabilities
-- **[Murf AI](https://murf.ai)**: Text-to-speech API for natural voice generation
+- **[Murf AI](https://murf.ai)**: Dual-mode text-to-speech (traditional API + WebSocket streaming)
 - **Context-Aware Processing**: Conversation history preservation across streaming sessions
 
 ### Data & Infrastructure
@@ -478,6 +606,7 @@ Retrieve conversation history for a specific session.
 - **Streaming Controls**: Advanced start/stop streaming with intelligent state management
 - **Real-Time Transcription Display**: Watch your words appear instantly as you speak
 - **Live LLM Response Streaming**: See AI responses generate character by character
+- **Murf TTS Streaming Display**: Real-time base64 audio chunks printed to console for voice synthesis
 - **Session Monitoring**: Real-time session IDs, connection counts, and streaming metrics
 - **Streaming Status Log**: Live event logging with timestamped streaming updates
 - **Performance Indicators**: Real-time bytes transferred, chunk processing, and latency metrics
@@ -530,6 +659,7 @@ assemblyai==0.17.0        # AssemblyAI Python SDK with Universal Streaming
 google-generativeai==0.3.2 # Google Gemini AI SDK with streaming support
 pymongo==4.6.0            # MongoDB driver for traditional storage
 motor==3.3.2              # Async MongoDB driver for real-time operations
+websockets==12.0          # WebSocket library for Murf TTS streaming (NEW)
 ```
 
 ### 🏗️ Architecture Benefits
@@ -538,6 +668,7 @@ The revolutionary streaming architecture provides key improvements:
 
 - **⚡ Real-Time Performance**: Sub-second latency for transcription and LLM responses
 - **🔄 Live Interaction**: Natural conversation flow with instant feedback
+- **🎵 Complete Voice Pipeline**: End-to-end streaming from voice input to audio response generation
 - **🧩 Dual-Mode Flexibility**: Traditional and streaming modes for different use cases
 - **🔒 Enhanced Type Safety**: Streaming-aware Pydantic models with WebSocket validation
 - **📝 Advanced Logging**: Real-time operation tracking with performance metrics
@@ -693,9 +824,10 @@ The application includes console logging for debugging. Check the browser consol
 4. **Begin Voice Streaming**: Click "Start Recording" to begin live audio transmission
 5. **See Live Transcription**: Watch your words appear instantly as you speak
 6. **Experience Streaming AI**: Observe LLM responses generate character by character
-7. **Natural Turn Taking**: Stop speaking and watch automatic turn detection
-8. **Continue Conversation**: Continue with natural voice conversation flow
-9. **Review Session**: Check saved audio files and conversation history
+7. **View Real-Time TTS**: See base64 audio chunks printed to console via Murf WebSocket streaming
+8. **Natural Turn Taking**: Stop speaking and watch automatic turn detection
+9. **Continue Conversation**: Continue with natural voice conversation flow
+10. **Review Session**: Check saved audio files and conversation history
 
 ### Traditional Mode (Enhanced) 🎤
 1. **Classic Voice Interface**: Use the traditional single-button interface
@@ -717,6 +849,7 @@ The application includes console logging for debugging. Check the browser consol
 - **Performance Monitoring**: Track real-time metrics and connection health
 - **Dual-Mode History**: Access both traditional and streaming conversation records
 - **Error Recovery**: Automatic reconnection and stream resumption capabilities
+- **Murf TTS Streaming**: Real-time base64 audio output via WebSocket console display
 
 ## 🆕 Revolutionary Features Highlights
 
@@ -724,6 +857,8 @@ The application includes console logging for debugging. Check the browser consol
 - **Live Voice Pipeline**: Complete real-time voice-to-voice conversation with sub-second latency
 - **Streaming Transcription**: Watch your words appear instantly as you speak with AssemblyAI Universal Streaming
 - **Live LLM Responses**: Experience AI thinking in real-time with character-by-character response generation
+- **Murf WebSocket TTS**: Revolutionary real-time text-to-speech streaming with base64 audio output
+- **Complete Audio Pipeline**: End-to-end streaming from voice input to audio response generation
 - **Seamless Turn Detection**: Natural conversation flow with intelligent speaker turn recognition
 - **Real-Time Session Persistence**: All streaming conversations automatically saved to MongoDB and audio files
 
@@ -750,6 +885,7 @@ The application includes console logging for debugging. Check the browser consol
 - **Comprehensive Error Handling**: Real-time error detection with specific streaming recovery strategies
 - **Performance Monitoring**: Live tracking of streaming performance, connection health, and system metrics
 - **Enterprise Features**: Session management, audio archival, and comprehensive logging for production use
+- **Murf WebSocket Integration**: Production-ready real-time TTS streaming with base64 audio output
 
 ## 🤝 Contributing
 
