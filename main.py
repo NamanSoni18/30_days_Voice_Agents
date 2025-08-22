@@ -399,7 +399,10 @@ async def audio_stream_websocket(websocket: WebSocket):
             logger.error(f"Error sending transcription: {e}")
 
     async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket):
-        """Handle LLM streaming response and send to Murf WebSocket for TTS"""
+        accumulated_response = ""
+        audio_chunk_count = 0
+        total_audio_size = 0
+        
         try:
             print(f"🤖 Starting LLM streaming for: {user_message}")
             
@@ -411,7 +414,6 @@ async def audio_stream_websocket(websocket: WebSocket):
                 logger.error(f"Chat history error: {str(e)}")
                 chat_history = []
             
-            # Send LLM streaming start notification
             start_message = {
                 "type": "llm_streaming_start",
                 "message": "LLM is generating response...",
@@ -426,8 +428,6 @@ async def audio_stream_websocket(websocket: WebSocket):
             try:
                 await murf_websocket_service.connect()
                 logger.info("Connected to Murf WebSocket for streaming TTS")
-                
-                # Create async generator for LLM streaming
                 async def llm_text_stream():
                     nonlocal accumulated_response
                     async for chunk in llm_service.generate_streaming_response(user_message, chat_history):
@@ -454,10 +454,10 @@ async def audio_stream_websocket(websocket: WebSocket):
                 }
                 await manager.send_personal_message(json.dumps(tts_start_message), websocket)
                 
+                # Initialize audio tracking variables
                 audio_chunk_count = 0
                 total_audio_size = 0
-                
-                # Stream LLM text to Murf and get base64 audio back
+            
                 async for audio_response in murf_websocket_service.stream_text_to_audio(llm_text_stream()):
                     if audio_response["type"] == "audio_chunk":
                         audio_chunk_count += 1
@@ -475,13 +475,11 @@ async def audio_stream_websocket(websocket: WebSocket):
                         }
                         await manager.send_personal_message(json.dumps(audio_message), websocket)
                         
-                        # Check if this is the final chunk
                         if audio_response["is_final"]:
                             print(f"\n🎵 TTS streaming completed. Total audio chunks: {audio_chunk_count}")
                             break
                     
                     elif audio_response["type"] == "status":
-                        # Send status updates to client
                         status_message = {
                             "type": "tts_status",
                             "data": audio_response["data"],

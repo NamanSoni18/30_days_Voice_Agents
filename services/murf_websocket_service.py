@@ -22,14 +22,26 @@ class MurfWebSocketService:
         self.is_connected = False
         # Use a static context_id as requested to avoid context limit exceeded errors
         self.static_context_id = "voice_agent_context_static"
+        # Add a lock to prevent concurrent recv() calls
+        self._recv_lock = asyncio.Lock()
+        self._connecting = False
         
     async def connect(self):
         """Establish WebSocket connection to Murf"""
+        # Prevent multiple concurrent connections
+        if self._connecting or self.is_connected:
+            logger.info("Already connected or connecting to Murf WebSocket")
+            return
+            
+        self._connecting = True
         try:
             connection_url = f"{self.ws_url}?api-key={self.api_key}&sample_rate=44100&channel_type=MONO&format=WAV"
             self.websocket = await websockets.connect(connection_url)
             self.is_connected = True
             logger.info("✅ Connected to Murf WebSocket")
+            
+            # Clear any existing context first to avoid "Exceeded Active context limit"
+            await self.clear_context()
             
             # Send initial voice configuration
             await self._send_voice_config()
@@ -38,6 +50,8 @@ class MurfWebSocketService:
             logger.error(f"Failed to connect to Murf WebSocket: {str(e)}")
             self.is_connected = False
             raise
+        finally:
+            self._connecting = False
     
     async def _send_voice_config(self):
         """Send voice configuration to Murf WebSocket"""
@@ -55,13 +69,14 @@ class MurfWebSocketService:
             logger.info(f"Sending voice config: {voice_config_msg}")
             await self.websocket.send(json.dumps(voice_config_msg))
             
-            # Wait for voice config acknowledgment
-            try:
-                response = await asyncio.wait_for(self.websocket.recv(), timeout=5.0)
-                data = json.loads(response)
-                logger.info(f"Voice config response: {data}")
-            except asyncio.TimeoutError:
-                logger.warning("Timeout waiting for voice config acknowledgment")
+            # Wait for voice config acknowledgment with recv lock
+            async with self._recv_lock:
+                try:
+                    response = await asyncio.wait_for(self.websocket.recv(), timeout=5.0)
+                    data = json.loads(response)
+                    logger.info(f"Voice config response: {data}")
+                except asyncio.TimeoutError:
+                    logger.warning("Timeout waiting for voice config acknowledgment")
             
         except Exception as e:
             logger.error(f"Failed to send voice config: {str(e)}")
@@ -127,16 +142,18 @@ class MurfWebSocketService:
     
     async def _listen_for_audio(self) -> AsyncGenerator[dict, None]:
         """Listen for audio responses from Murf WebSocket"""
+        audio_chunk_count = 0
+        total_audio_size = 0
+        
         try:
-            audio_chunk_count = 0
-            total_audio_size = 0
-            
             while True:
                 try:
-                    response = await asyncio.wait_for(self.websocket.recv(), timeout=30.0)
-                    data = json.loads(response)
+                    # Use recv lock to prevent concurrent recv() calls
+                    async with self._recv_lock:
+                        response = await asyncio.wait_for(self.websocket.recv(), timeout=30.0)
                     
-                    logger.info(f"Received response from Murf: {data.keys()}")
+                    data = json.loads(response)
+                    logger.info(f"📥 Received response: {list(data.keys())}")
                     
                     if "audio" in data:
                         audio_chunk_count += 1
@@ -149,6 +166,7 @@ class MurfWebSocketService:
                         print(f"Base64 Audio Size: {len(audio_base64)} characters")
                         print(f"Base64 Audio Preview: {audio_base64[:100]}...")
                         print(f"Base64 Audio (Full): {audio_base64}")
+                        print(f"Final: {data.get('final', False)}")
                         print(f"=== END AUDIO CHUNK {audio_chunk_count} ===\n")
                         
                         # Yield the response
@@ -170,6 +188,7 @@ class MurfWebSocketService:
                     
                     else:
                         # Non-audio response
+                        print(f"📊 Non-audio response: {data}")
                         logger.info(f"Received non-audio response: {data}")
                         yield {
                             "type": "status",
@@ -188,7 +207,7 @@ class MurfWebSocketService:
                     break
             
         except Exception as e:
-            logger.error(f"Error in _listen_for_audio: {str(e)}")
+            logger.error(f"Error in _listen_for_audio (total chunks processed: {audio_chunk_count}): {str(e)}")
             raise
     
     async def send_single_text(self, text: str) -> AsyncGenerator[dict, None]:
@@ -226,14 +245,26 @@ class MurfWebSocketService:
     async def clear_context(self):
         """Clear the current context to handle interruptions"""
         try:
+            if not self.websocket or not self.is_connected:
+                return  # No connection to clear
+                
             clear_msg = {
                 "context_id": self.static_context_id,
                 "clear": True
             }
             
-            logger.info("Clearing Murf context")
+            logger.info("Clearing Murf context to avoid context limit errors")
             await self.websocket.send(json.dumps(clear_msg))
+            
+            # Use the recv lock to prevent concurrency issues
+            async with self._recv_lock:
+                try:
+                    response = await asyncio.wait_for(self.websocket.recv(), timeout=3.0)
+                    data = json.loads(response)
+                    logger.info(f"Context clear response: {data}")
+                except asyncio.TimeoutError:
+                    logger.warning("Timeout waiting for context clear acknowledgment")
             
         except Exception as e:
             logger.error(f"Error clearing context: {str(e)}")
-            raise
+            # Don't raise here - clearing context is best effort
