@@ -154,36 +154,6 @@ async def get_chat_history_endpoint(session_id: str = Path(..., description="Ses
         )
 
 
-@app.get("/api/streamed-audio")
-async def list_streamed_audio():
-    """Get list of all streamed audio files"""
-    try:
-        audio_dir = "streamed_audio"
-        if not os.path.exists(audio_dir):
-            return {"audio_files": []}
-        
-        audio_files = []
-        for filename in os.listdir(audio_dir):
-            if filename.endswith('.wav'):
-                filepath = os.path.join(audio_dir, filename)
-                file_size = os.path.getsize(filepath)
-                file_modified = os.path.getmtime(filepath)
-                
-                audio_files.append({
-                    "filename": filename,
-                    "size_bytes": file_size,
-                    "modified_timestamp": file_modified,
-                    "modified_date": datetime.fromtimestamp(file_modified).isoformat()
-                })
-        
-        audio_files.sort(key=lambda x: x['modified_timestamp'], reverse=True)
-        return {"audio_files": audio_files}
-    
-    except Exception as e:
-        logger.error(f"Error listing streamed audio files: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
 @app.post("/agent/chat/{session_id}", response_model=VoiceChatResponse)
 async def chat_with_agent(
     session_id: str = Path(..., description="Session ID"),

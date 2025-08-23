@@ -839,21 +839,23 @@ document.addEventListener("DOMContentLoaded", function () {
   let audioBase64Chunks = [];
   let totalAudioChunks = 0;
   let totalAudioSize = 0;
+  
+  // Audio playback variables (based on Murf's streaming reference)
+  let audioContext = null;
+  let audioChunks = []; // Store PCM audio chunks for playback
+  let playheadTime = 0;
+  let isPlaying = false;
+  let wavHeaderSet = true;
+  const SAMPLE_RATE = 44100;
 
   const audioStreamBtn = document.getElementById("audioStreamBtn");
-  const listAudioFilesBtn = document.getElementById("listAudioFilesBtn");
   const audioStreamStatus = document.getElementById("audioStreamStatus");
   const streamingStatusLog = document.getElementById("streamingStatusLog");
-  const audioFilesContainer = document.getElementById("audioFilesContainer");
-  const audioFilesList = document.getElementById("audioFilesList");
   const connectionStatus = document.getElementById("connectionStatus");
   const streamingSessionId = document.getElementById("streamingSessionId");
+  
   if (audioStreamBtn) {
     audioStreamBtn.addEventListener("click", toggleAudioStreaming);
-  }
-
-  if (listAudioFilesBtn) {
-    listAudioFilesBtn.addEventListener("click", loadAudioFiles);
   }
 
   async function toggleAudioStreaming() {
@@ -870,13 +872,14 @@ document.addEventListener("DOMContentLoaded", function () {
     totalAudioChunks = 0;
     totalAudioSize = 0;
     
+    // Reset audio playback state
+    resetAudioPlayback();
+    
     // Hide previous streaming UI elements
     const elementsToHide = [
       'llmStreamingArea',
       'ttsStreamingArea', 
       'streamingSummaryArea',
-      'liveTranscriptionArea',
-      'completeTranscriptionArea',
       'noSpeechArea'
     ];
     
@@ -938,21 +941,17 @@ document.addEventListener("DOMContentLoaded", function () {
           // Display final transcription prominently only if we have text
           if (data.text && data.text.trim()) {
             updateStreamingStatus(`🎙️ FINAL: "${data.text}"`, "recording");
-            displayTranscriptionOnUI(data.text, true);
           }
         } else if (data.type === "partial_transcript") {
           // Show partial transcripts in real-time for feedback
           if (data.text && data.text.trim()) {
             updateStreamingStatus(`🎙️ ${data.text}`, "info");
-            displayTranscriptionOnUI(data.text, false);
           }
         } else if (data.type === "turn_end") {
           // Handle turn detection - user has stopped talking
           updateStreamingStatus("🛑 Turn ended - User stopped talking", "success");
           if (data.final_transcript && data.final_transcript.trim()) {
             updateStreamingStatus(`✅ TURN COMPLETE: "${data.final_transcript}"`, "success");
-            displayTranscriptionOnUI(data.final_transcript, true);
-            showCompleteTranscription(data.final_transcript);
           } else {
             updateStreamingStatus("⚠️ Turn ended but no speech detected", "warning");
             showNoSpeechMessage();
@@ -960,8 +959,7 @@ document.addEventListener("DOMContentLoaded", function () {
         } else if (data.type === "transcription_complete") {
           if (data.text && data.text.trim()) {
             updateStreamingStatus(`✅ COMPLETE TRANSCRIPTION: "${data.text}"`, "success");
-            displayTranscriptionOnUI(data.text, true);
-            showCompleteTranscription(data.text);
+            // showCompleteTranscription(data.text);
           } else {
             updateStreamingStatus("⚠️ No speech detected in recording", "warning");
             showNoSpeechMessage();
@@ -969,7 +967,7 @@ document.addEventListener("DOMContentLoaded", function () {
         } else if (data.type === "streaming_complete") {
           updateStreamingStatus(`🎯 ${data.message}`, "success");
           if (data.transcription && data.transcription.trim()) {
-            showCompleteTranscription(data.transcription);
+            // Backend transcription processing continues silently
           } else {
             updateStreamingStatus("⚠️ Recording completed but no speech was detected", "warning");
             showNoSpeechMessage();
@@ -985,6 +983,7 @@ document.addEventListener("DOMContentLoaded", function () {
           audioBase64Chunks = [];
           totalAudioChunks = 0;
           totalAudioSize = 0;
+          resetAudioPlayback();
           displayLLMStreamingStart(data.user_message);
         } else if (data.type === "llm_streaming_chunk") {
           // Display LLM text chunks as they arrive
@@ -1169,57 +1168,6 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log(`[Audio Stream] ${message}`);
   }
 
-  async function loadAudioFiles() {
-    try {
-      const response = await fetch("/api/streamed-audio");
-      const data = await response.json();
-
-      if (audioFilesContainer && audioFilesList) {
-        audioFilesContainer.style.display = "block";
-        audioFilesList.innerHTML = "";
-
-        if (data.success && data.files.length > 0) {
-          data.files.forEach((file) => {
-            const fileElement = document.createElement("div");
-            fileElement.className = "audio-file-item";
-            fileElement.innerHTML = `
-              <div class="file-info">
-                <strong>${file.filename}</strong>
-                <div class="file-details">
-                  <span class="file-size">${(file.size_bytes / 1024).toFixed(
-                    2
-                  )} KB</span>
-                  <span class="file-date">${new Date(
-                    file.created_at
-                  ).toLocaleString()}</span>
-                </div>
-              </div>
-            `;
-            audioFilesList.appendChild(fileElement);
-          });
-
-          // Add summary
-          const summary = document.createElement("div");
-          summary.className = "files-summary";
-          summary.innerHTML = `
-            <strong>Total: ${data.total_files} files (${(
-            data.total_size_bytes / 1024
-          ).toFixed(2)} KB)</strong>
-          `;
-          audioFilesList.appendChild(summary);
-        } else {
-          audioFilesList.innerHTML =
-            '<p class="no-files">No audio files found.</p>';
-        }
-      }
-    } catch (error) {
-      console.error("Error loading audio files:", error);
-      if (audioFilesList) {
-        audioFilesList.innerHTML = '<p class="error">Error loading files.</p>';
-      }
-    }
-  }
-
   // Function to clear previous transcription displays
   function clearPreviousTranscriptions() {
     // Clear live transcription area
@@ -1245,142 +1193,22 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // Function to display transcription on the UI
+  // Function to display transcription on the UI (disabled for clean UI)
   function displayTranscriptionOnUI(text, isFinal) {
-    // Create or update transcription display area
-    let transcriptionArea = document.getElementById('liveTranscriptionArea');
-    
-    if (!transcriptionArea) {
-      // Create transcription area if it doesn't exist
-      transcriptionArea = document.createElement('div');
-      transcriptionArea.id = 'liveTranscriptionArea';
-      transcriptionArea.className = 'live-transcription-area';
-      transcriptionArea.innerHTML = `
-        <h4>🎙️ Live Transcription:</h4>
-        <div id="transcriptionText" class="transcription-text-live"></div>
-      `;
-      
-      // Insert after the streaming status container
-      const statusContainer = document.getElementById('audioStreamStatus');
-      if (statusContainer) {
-        statusContainer.parentNode.insertBefore(transcriptionArea, statusContainer.nextSibling);
-      }
-    }
-    
-    const transcriptionText = document.getElementById('transcriptionText');
-    if (transcriptionText) {
-      if (isFinal) {
-        // For final transcriptions, add to the permanent list
-        const finalDiv = document.createElement('div');
-        finalDiv.className = 'final-transcription';
-        finalDiv.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${text}`;
-        transcriptionText.appendChild(finalDiv);
-        
-        // Clear partial text
-        const partialDiv = transcriptionText.querySelector('.partial-transcription');
-        if (partialDiv) {
-          partialDiv.remove();
-        }
-        
-        // Scroll to bottom
-        transcriptionText.scrollTop = transcriptionText.scrollHeight;
-      } else {
-        // For partial transcriptions, update the temporary display
-        let partialDiv = transcriptionText.querySelector('.partial-transcription');
-        if (!partialDiv) {
-          partialDiv = document.createElement('div');
-          partialDiv.className = 'partial-transcription';
-          transcriptionText.appendChild(partialDiv);
-        }
-        partialDiv.innerHTML = `<em>🔄 ${text}</em>`;
-      }
-      
-      // Show the transcription area
-      transcriptionArea.style.display = 'block';
-    }
+    // Transcription processing happens in backend, UI display disabled
+    console.log('Transcription processed (UI hidden):', text, 'Final:', isFinal);
   }
 
-  // Function to show complete final transcription in a highlighted way
+  // Function to show complete final transcription (disabled for clean UI)
   function showCompleteTranscription(text) {
-    if (!text || text.trim() === '') return;
-    
-    // Create or update the complete transcription display
-    let completeArea = document.getElementById('completeTranscriptionArea');
-    
-    if (!completeArea) {
-      completeArea = document.createElement('div');
-      completeArea.id = 'completeTranscriptionArea';
-      completeArea.className = 'complete-transcription-area';
-      completeArea.innerHTML = `
-        <h4>✅ Complete Transcription:</h4>
-        <div id="completeTranscriptionText" class="complete-transcription-text"></div>
-      `;
-      
-      // Insert after the live transcription area or streaming status
-      const liveArea = document.getElementById('liveTranscriptionArea');
-      const statusContainer = document.getElementById('audioStreamStatus');
-      const insertAfter = liveArea || statusContainer;
-      
-      if (insertAfter) {
-        insertAfter.parentNode.insertBefore(completeArea, insertAfter.nextSibling);
-      }
-    }
-    
-    const completeText = document.getElementById('completeTranscriptionText');
-    if (completeText) {
-      completeText.innerHTML = `
-        <div class="transcription-result">
-          <span class="transcription-timestamp">${new Date().toLocaleTimeString()}</span>
-          <div class="transcription-content">"${text}"</div>
-        </div>
-      `;
-      completeArea.style.display = 'block';
-      
-      // Scroll into view
-      completeArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
+    // Transcription processing happens in backend, UI display disabled
+    console.log('Complete transcription processed (UI hidden):', text);
   }
 
-  // Function to show a message when no speech is detected
+  // Function to show a message when no speech is detected (disabled for clean UI)
   function showNoSpeechMessage() {
-    // Create or update the no speech message display
-    let noSpeechArea = document.getElementById('noSpeechArea');
-    
-    if (!noSpeechArea) {
-      noSpeechArea = document.createElement('div');
-      noSpeechArea.id = 'noSpeechArea';
-      noSpeechArea.className = 'no-speech-area';
-      noSpeechArea.innerHTML = `
-        <h4>🔇 No Speech Detected</h4>
-        <div class="no-speech-content">
-          <p>No speech was detected in your recording. Please try:</p>
-          <ul>
-            <li>Speaking more clearly and loudly</li>
-            <li>Recording for a longer duration (at least 2-3 seconds)</li>
-            <li>Checking your microphone permissions and volume</li>
-            <li>Ensuring you're close to your microphone</li>
-          </ul>
-        </div>
-      `;
-      
-      // Insert after the streaming status container
-      const statusContainer = document.getElementById('audioStreamStatus');
-      if (statusContainer) {
-        statusContainer.parentNode.insertBefore(noSpeechArea, statusContainer.nextSibling);
-      }
-    }
-    
-    noSpeechArea.style.display = 'block';
-    
-    // Hide the no speech message after 10 seconds
-    setTimeout(() => {
-      if (noSpeechArea) {
-        noSpeechArea.style.display = 'none';
-      }
-    }, 10000);
-    
-    // Scroll into view
-    noSpeechArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Speech detection happens in backend, UI display disabled
+    console.log('No speech detected (UI hidden)');
   }
 
   // Function to handle audio base64 chunks from TTS
@@ -1393,6 +1221,9 @@ document.addEventListener("DOMContentLoaded", function () {
     // Log acknowledgement to console
     console.log(`🎵 Audio chunk received: #${audioData.chunk_number}, Size: ${audioData.chunk_size} bytes, Total chunks: ${totalAudioChunks}`);
     console.log(`📊 Accumulated ${audioBase64Chunks.length} audio chunks, Total size: ${totalAudioSize} bytes`);
+    
+    // Play the audio chunk as it arrives for seamless streaming
+    playAudioChunk(audioData.audio_base64);
     
     // Update UI with audio streaming progress
     updateStreamingStatus(
@@ -1409,6 +1240,17 @@ document.addEventListener("DOMContentLoaded", function () {
         `✅ Audio streaming complete! Received ${totalAudioChunks} chunks totaling ${totalAudioSize} bytes`,
         "success"
       );
+      
+      // Set a timeout to hide the playback indicator after the audio finishes
+      setTimeout(() => {
+        if (!isPlaying && audioChunks.length === 0) {
+          updatePlaybackStatus('Audio streaming complete!');
+          setTimeout(() => {
+            hideAudioPlaybackIndicator();
+          }, 2000);
+        }
+      }, 1000);
+      
       displayAudioStreamingComplete();
     }
   }
@@ -1448,6 +1290,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const responseText = document.getElementById('llmResponseText');
     if (responseText) {
       responseText.innerHTML = '<em>Generating response...</em>';
+      responseText.setAttribute('data-raw-text', '');
     }
   }
 
@@ -1456,11 +1299,35 @@ document.addEventListener("DOMContentLoaded", function () {
     const responseText = document.getElementById('llmResponseText');
     if (responseText) {
       // Append the new chunk
-      let currentText = responseText.textContent || '';
+      let currentText = responseText.getAttribute('data-raw-text') || '';
       if (currentText === 'Generating response...') {
         currentText = '';
       }
-      responseText.textContent = currentText + chunk;
+      
+      // Accumulate the raw text
+      const newText = currentText + chunk;
+      responseText.setAttribute('data-raw-text', newText);
+      
+      // Parse as Markdown and display
+      try {
+        if (typeof marked !== 'undefined') {
+          const markdownHtml = marked.parse(newText);
+          responseText.innerHTML = markdownHtml;
+          
+          // Apply syntax highlighting if available
+          if (typeof hljs !== 'undefined') {
+            responseText.querySelectorAll('pre code').forEach((block) => {
+              hljs.highlightElement(block);
+            });
+          }
+        } else {
+          // Fallback to simple line break replacement
+          responseText.innerHTML = newText.replace(/\n/g, '<br>');
+        }
+      } catch (error) {
+        console.warn('Markdown parsing error:', error);
+        responseText.innerHTML = newText.replace(/\n/g, '<br>');
+      }
       
       // Scroll to bottom
       responseText.scrollTop = responseText.scrollHeight;
@@ -1566,7 +1433,7 @@ document.addEventListener("DOMContentLoaded", function () {
       <div class="streaming-summary">
         <div class="summary-item">
           <strong>Complete Response:</strong>
-          <div class="final-response">${data.complete_response}</div>
+          <div class="final-response" id="finalResponseContent"></div>
         </div>
         <div class="summary-stats">
           <div class="stat-item">
@@ -1591,6 +1458,30 @@ document.addEventListener("DOMContentLoaded", function () {
     
     summaryArea.style.display = 'block';
     
+    // Render the final response as Markdown
+    const finalResponseElement = document.getElementById('finalResponseContent');
+    if (finalResponseElement && data.complete_response) {
+      try {
+        if (typeof marked !== 'undefined') {
+          const markdownHtml = marked.parse(data.complete_response);
+          finalResponseElement.innerHTML = markdownHtml;
+          
+          // Apply syntax highlighting if available
+          if (typeof hljs !== 'undefined') {
+            finalResponseElement.querySelectorAll('pre code').forEach((block) => {
+              hljs.highlightElement(block);
+            });
+          }
+        } else {
+          // Fallback to simple line break replacement
+          finalResponseElement.innerHTML = data.complete_response.replace(/\n/g, '<br>');
+        }
+      } catch (error) {
+        console.warn('Markdown parsing error in final response:', error);
+        finalResponseElement.innerHTML = data.complete_response.replace(/\n/g, '<br>');
+      }
+    }
+    
     // Scroll into view
     summaryArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
@@ -1605,5 +1496,205 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     
     console.log(`📊 Total audio data: ${audioBase64Chunks.join('').length} base64 characters`);
+  }
+
+  // ==================== AUDIO STREAMING PLAYBACK FUNCTIONS ====================
+  // Based on Murf's WebSocket streaming reference implementation
+  
+  /**
+   * Initialize audio context for streaming playback
+   */
+  function initializeAudioContext() {
+    try {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        playheadTime = audioContext.currentTime;
+        console.log('🎛️ Audio context initialized for streaming playback');
+      }
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to initialize audio context:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Convert base64 audio data to PCM Float32 array for Web Audio API playback
+   * @param {string} base64 - Base64 encoded audio data
+   * @returns {Float32Array} - PCM audio data as Float32 array
+   */
+  function base64ToPCMFloat32(base64) {
+    try {
+      let binary = atob(base64);
+      const offset = wavHeaderSet ? 44 : 0; // Skip WAV header if present
+      
+      if (wavHeaderSet) {
+        console.log('🎵 WAV header detected in first chunk:', binary.substring(0, 44));
+        wavHeaderSet = false; // Only process header once
+      }
+      
+      const length = binary.length - offset;
+      const buffer = new ArrayBuffer(length);
+      const byteArray = new Uint8Array(buffer);
+      
+      for (let i = 0; i < byteArray.length; i++) {
+        byteArray[i] = binary.charCodeAt(i + offset);
+      }
+
+      const view = new DataView(byteArray.buffer);
+      const sampleCount = byteArray.length / 2; // 16-bit samples
+      const float32Array = new Float32Array(sampleCount);
+
+      for (let i = 0; i < sampleCount; i++) {
+        const int16 = view.getInt16(i * 2, true); // Little endian
+        float32Array[i] = int16 / 32768; // Convert to float32 range [-1, 1]
+      }
+
+      return float32Array;
+    } catch (error) {
+      console.error('❌ Error converting base64 to PCM:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Play audio chunks using Web Audio API for seamless streaming
+   */
+  function chunkPlay() {
+    if (audioChunks.length > 0) {
+      const chunk = audioChunks.shift();
+      
+      if (audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+      
+      try {
+        const buffer = audioContext.createBuffer(1, chunk.length, SAMPLE_RATE);
+        buffer.copyToChannel(chunk, 0);
+        
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.destination);
+        
+        const now = audioContext.currentTime;
+        if (playheadTime < now) {
+          playheadTime = now + 0.05; // Add small delay to prevent audio gaps
+        }
+        
+        source.start(playheadTime);
+        playheadTime += buffer.duration;
+        
+        console.log(`🔊 Playing audio chunk: ${chunk.length} samples, duration: ${buffer.duration.toFixed(3)}s`);
+        
+        // Update playback status
+        updatePlaybackStatus(`Playing audio chunk (${chunk.length} samples, ${buffer.duration.toFixed(2)}s)`);
+        
+        // Continue playing remaining chunks
+        if (audioChunks.length > 0) {
+          chunkPlay();
+        } else {
+          isPlaying = false;
+          updatePlaybackStatus('Audio streaming paused - waiting for more chunks...');
+          console.log('🎵 Audio chunk queue empty, playback paused');
+        }
+      } catch (error) {
+        console.error('❌ Error playing audio chunk:', error);
+        isPlaying = false;
+        hideAudioPlaybackIndicator();
+      }
+    }
+  }
+
+  /**
+   * Process and play individual audio chunk as it arrives
+   * @param {string} base64Audio - Base64 encoded audio data
+   */
+  function playAudioChunk(base64Audio) {
+    try {
+      // Initialize audio context if not already done
+      if (!initializeAudioContext()) {
+        return;
+      }
+
+      // Show audio playback indicator
+      showAudioPlaybackIndicator();
+
+      // Convert base64 to PCM data
+      const float32Array = base64ToPCMFloat32(base64Audio);
+      if (!float32Array || float32Array.length === 0) {
+        console.warn('⚠️ Empty or invalid audio chunk received');
+        return;
+      }
+
+      console.log(`🎵 Received audio chunk: ${float32Array.length} samples`);
+      
+      // Add chunk to playback queue
+      audioChunks.push(float32Array);
+
+      // Start playback if not already playing and we have enough audio buffered
+      if (!isPlaying && (playheadTime <= audioContext.currentTime + 0.1 || audioChunks.length >= 2)) {
+        isPlaying = true;
+        audioContext.resume().then(() => {
+          console.log('🎛️ Starting seamless audio playback');
+          chunkPlay();
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error in playAudioChunk:', error);
+    }
+  }
+
+  /**
+   * Reset audio streaming playback state
+   */
+  function resetAudioPlayback() {
+    audioChunks = [];
+    isPlaying = false;
+    wavHeaderSet = true;
+    
+    if (audioContext) {
+      playheadTime = audioContext.currentTime;
+    }
+    
+    // Hide audio playback indicator
+    hideAudioPlaybackIndicator();
+    
+    console.log('🔄 Audio playback state reset');
+  }
+
+  /**
+   * Show the audio playback indicator with animation
+   */
+  function showAudioPlaybackIndicator() {
+    const playbackContainer = document.getElementById('audioPlaybackStatus');
+    if (playbackContainer) {
+      playbackContainer.style.display = 'block';
+      
+      // Update status text
+      const statusText = document.getElementById('playbackStatusText');
+      if (statusText) {
+        statusText.textContent = 'Audio is streaming and playing...';
+      }
+    }
+  }
+
+  /**
+   * Hide the audio playback indicator
+   */
+  function hideAudioPlaybackIndicator() {
+    const playbackContainer = document.getElementById('audioPlaybackStatus');
+    if (playbackContainer) {
+      playbackContainer.style.display = 'none';
+    }
+  }
+
+  /**
+   * Update playback status text
+   */
+  function updatePlaybackStatus(text) {
+    const statusText = document.getElementById('playbackStatusText');
+    if (statusText) {
+      statusText.textContent = text;
+    }
   }
 });

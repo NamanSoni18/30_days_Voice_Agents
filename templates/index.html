@@ -99,10 +99,13 @@
               <span class="btn-text">Start Audio Streaming</span>
             </button>
             
+            <!-- HIDDEN: Audio Generation UI - View Saved Files Button -->
+            <!-- 
             <button id="listAudioFilesBtn" class="btn tertiary" style="margin-left: 10px;">
               <span class="btn-icon">📁</span>
               <span class="btn-text">View Saved Files</span>
             </button>
+            -->
           </div>
 
           <div id="audioStreamStatus" class="streaming-status-container" style="display: none;">
@@ -110,10 +113,27 @@
             <div id="streamingStatusLog" class="status-log"></div>
           </div>
 
+          <div id="audioPlaybackStatus" class="audio-playback-container" style="display: none;">
+            <h4>🔊 Live Audio Playback:</h4>
+            <div class="playback-indicator">
+              <div class="audio-wave-animation">
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+              </div>
+              <span id="playbackStatusText">Audio is streaming...</span>
+            </div>
+          </div>
+
+          <!-- HIDDEN: Audio Generation UI - Audio Files Container -->
+          <!-- 
           <div id="audioFilesContainer" class="audio-files-container" style="display: none;">
             <h4>Saved Audio Files:</h4>
             <div id="audioFilesList" class="audio-files-list"></div>
           </div>
+          -->
         </div>
       </main>
 

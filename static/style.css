@@ -1053,6 +1053,156 @@ main {
     }
 }
 
+/* === STREAMING AI RESPONSE STYLES === */
+.llm-streaming-area,
+.streaming-summary-area {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    margin: 20px 0;
+    text-align: left;
+}
+
+.llm-streaming-area h4,
+.streaming-summary-area h4 {
+    color: #ec4899;
+    margin-bottom: 15px;
+    font-size: 1.2rem;
+    font-weight: 600;
+    text-align: left;
+}
+
+.user-query {
+    background: #f0f8ff;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+    margin-bottom: 15px;
+    text-align: left;
+}
+
+.llm-response {
+    background: #f8fafc;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #ec4899;
+    text-align: left;
+}
+
+.llm-response strong {
+    color: #2d3748;
+    font-weight: 600;
+    text-align: left;
+}
+
+.llm-response-text {
+    background: transparent;
+    padding: 15px 0;
+    border: none;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #2d3748;
+    text-align: left;
+    max-height: none;
+    overflow: visible;
+}
+
+/* Final response content in streaming complete */
+.final-response {
+    background: #f8fafc;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #10b981;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #2d3748;
+    text-align: left;
+    margin: 15px 0;
+}
+
+/* Ensure all markdown content in streaming areas is left-aligned */
+.llm-streaming-area .llm-response-text h1,
+.llm-streaming-area .llm-response-text h2,
+.llm-streaming-area .llm-response-text h3,
+.llm-streaming-area .llm-response-text h4,
+.llm-streaming-area .llm-response-text h5,
+.llm-streaming-area .llm-response-text h6,
+.final-response h1,
+.final-response h2,
+.final-response h3,
+.final-response h4,
+.final-response h5,
+.final-response h6 {
+    text-align: left;
+    margin: 15px 0 10px 0;
+    color: #2d3748;
+}
+
+.llm-streaming-area .llm-response-text ul,
+.llm-streaming-area .llm-response-text ol,
+.final-response ul,
+.final-response ol {
+    text-align: left;
+    margin: 15px 0;
+    padding-left: 25px;
+}
+
+.llm-streaming-area .llm-response-text li,
+.final-response li {
+    text-align: left;
+    margin: 8px 0;
+    line-height: 1.6;
+}
+
+.llm-streaming-area .llm-response-text p,
+.final-response p {
+    text-align: left;
+    margin: 12px 0;
+    line-height: 1.6;
+}
+
+.llm-streaming-area .llm-response-text strong,
+.llm-streaming-area .llm-response-text em,
+.final-response strong,
+.final-response em {
+    text-align: left;
+}
+
+/* Summary stats styling */
+.streaming-summary {
+    text-align: left;
+}
+
+.summary-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+    text-align: left;
+}
+
+.stat-item {
+    background: #f8fafc;
+    padding: 12px;
+    border-radius: 6px;
+    border-left: 3px solid #ec4899;
+    text-align: left;
+}
+
+.stat-label {
+    font-weight: 600;
+    color: #4a5568;
+    text-align: left;
+}
+
+.stat-value {
+    font-weight: 500;
+    color: #2d3748;
+    margin-left: 8px;
+    text-align: left;
+}
+
 .audio-streaming-section {
     margin-top: 30px;
 }
@@ -1562,5 +1712,96 @@ main {
     .no-speech-content li {
         padding: 10px 12px;
         font-size: 0.9rem;
+    }
+}
+
+/* ==================== AUDIO PLAYBACK INDICATORS ==================== */
+
+.audio-playback-container {
+    background: rgba(34, 197, 94, 0.1);
+    border: 2px solid rgba(34, 197, 94, 0.3);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 15px 0;
+    backdrop-filter: blur(5px);
+}
+
+.audio-playback-container h4 {
+    color: #059669;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+}
+
+.playback-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+}
+
+.audio-wave-animation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 30px;
+}
+
+.wave-bar {
+    width: 4px;
+    background: linear-gradient(to top, #059669, #10b981);
+    border-radius: 2px;
+    animation: wave 1.2s ease-in-out infinite;
+}
+
+.wave-bar:nth-child(1) { animation-delay: 0s; }
+.wave-bar:nth-child(2) { animation-delay: 0.1s; }
+.wave-bar:nth-child(3) { animation-delay: 0.2s; }
+.wave-bar:nth-child(4) { animation-delay: 0.3s; }
+.wave-bar:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes wave {
+    0%, 100% {
+        height: 8px;
+        background: rgba(16, 185, 129, 0.3);
+    }
+    50% {
+        height: 25px;
+        background: #10b981;
+    }
+}
+
+#playbackStatusText {
+    color: #059669;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+/* Responsive adjustments for playback indicator */
+@media (max-width: 768px) {
+    .audio-playback-container {
+        padding: 15px;
+    }
+    
+    .playback-indicator {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .audio-wave-animation {
+        height: 25px;
+    }
+    
+    .wave-bar {
+        width: 3px;
+    }
+    
+    @keyframes wave {
+        0%, 100% {
+            height: 6px;
+        }
+        50% {
+            height: 20px;
+        }
     }
 }

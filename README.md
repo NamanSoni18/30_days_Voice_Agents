@@ -1,36 +1,37 @@
-# 30 Days of Voice Agents - Audio Streaming Implementation
+# 30 Days of Voice Agents - Voice Interaction Platform
 
-A modern conversational AI voice agent built with FastAPI, featuring real-time audio streaming capabilities, live transcription, streaming LLM responses, and **base64 audio chunk streaming** from Murf WebSocket TTS. This implementation demonstrates complete voice-to-voice conversations with streaming audio data delivery to the client.
+A modern conversational AI voice agent built with FastAPI, featuring real-time audio playback, live transcription, streaming LLM responses with **Markdown rendering**, and WebSocket-based TTS audio delivery from Murf AI. This implementation demonstrates complete voice-to-voice conversations with seamless audio playback and rich text formatting.
 
 ## ✨ Key Features
 
-### 🎵 **Audio Streaming Pipeline**
-- **Real-Time Audio Streaming**: WebSocket-based live audio transmission with 16kHz PCM encoding
+### 🎵 **Audio & Text Processing Pipeline**
+- **WebSocket Audio Playback**: Real-time TTS audio delivery with seamless Web Audio API integration
 - **Live Speech Recognition**: AssemblyAI Universal Streaming for instant transcription
-- **Streaming LLM Responses**: Google Gemini with real-time text generation
-- **Base64 Audio Streaming**: Murf WebSocket TTS delivers audio chunks as base64 data to client
-- **Audio Chunk Accumulation**: Client-side collection and logging of base64 audio chunks
-- **Console Audio Acknowledgments**: Real-time logging of received audio chunks for verification
+- **Streaming LLM Responses**: Google Gemini with real-time text generation and **Markdown rendering**
+- **WebSocket TTS Integration**: Murf AI WebSocket TTS with efficient audio playback
+- **Rich Text Rendering**: Markdown support for formatted AI responses with syntax highlighting
+- **Real-time Feedback**: Live connection status and audio processing indicators
 
-### 🎙️ **Dual Voice Interface**
-- **Traditional Mode**: Classic single-button interface with file-based audio processing
-- **Streaming Mode**: Real-time WebSocket streaming with live feedback
-- **Intelligent UI**: Dynamic status updates and connection monitoring
-- **Session Management**: Persistent conversation history across both modes
+### 🎙️ **Voice Interface**
+- **WebSocket Streaming**: Real-time audio and text communication
+- **Intelligent UI**: Dynamic status updates and connection monitoring with proper text alignment
+- **Session Management**: Persistent conversation history and context
+- **Responsive Design**: Clean, modern interface optimized for voice interactions
 
 ### 🤖 **AI Processing Pipeline**
 - **Real-Time Transcription**: Live speech-to-text with AssemblyAI streaming
-- **Context-Aware AI**: Streaming responses with conversation memory
+- **Context-Aware AI**: Streaming responses with conversation memory and Markdown formatting
 - **Turn Detection**: Automatic end-of-turn detection for natural conversations
-- **Live Response Display**: Character-by-character AI response generation
-- **Audio Generation**: Real-time TTS with base64 audio chunk delivery
+- **Live Response Display**: Character-by-character AI response generation with rich text support
+- **Audio Generation**: Real-time TTS with WebSocket audio delivery
 
 ### 🔄 **Enhanced Data Flow**
 - **WebSocket Communication**: Efficient real-time bidirectional communication
-- **Base64 Audio Chunks**: Direct audio data streaming without file playback
+- **Audio Playback**: Direct TTS audio streaming with Web Audio API integration
 - **Session Persistence**: MongoDB storage for conversation history
 - **Audio File Archival**: Automatic saving of streaming sessions
 - **Real-Time Monitoring**: Live connection status and performance metrics
+- **Markdown Rendering**: Rich text formatting for AI responses with syntax highlighting
 
 ## 🏗️ Architecture Overview
 
@@ -39,19 +40,19 @@ A modern conversational AI voice agent built with FastAPI, featuring real-time a
 **Backend Services:**
 - `main.py` - FastAPI application with WebSocket endpoints
 - `assemblyai_streaming_service.py` - Real-time speech recognition
-- `murf_websocket_service.py` - Streaming TTS with base64 audio output
+- `murf_websocket_service.py` - Streaming TTS with WebSocket audio delivery
 - `llm_service.py` - Streaming language model responses
 - `database_service.py` - Session and conversation persistence
 
 **Frontend Interface:**
-- `templates/index.html` - Dual-mode voice interface
-- `static/app.js` - WebSocket client with audio streaming handlers
-- `static/style.css` - Modern streaming UI design
+- `templates/index.html` - Modern voice interface with Markdown support
+- `static/app.js` - WebSocket client with audio playback and text rendering
+- `static/style.css` - Clean UI design with proper text alignment and streaming styles
 
 **Audio Processing:**
 - Real-time 16kHz PCM audio capture
 - WebSocket audio transmission
-- Base64 audio chunk accumulation
+- Audio playback and Markdown text rendering
 - Console logging of audio data reception
 
 ## 🔧 How It Works
@@ -61,21 +62,21 @@ A modern conversational AI voice agent built with FastAPI, featuring real-time a
 1. **WebSocket Connection**: Client connects to `/ws/audio-stream`
 2. **Audio Capture**: Browser captures 16kHz PCM audio in real-time
 3. **Live Transcription**: AssemblyAI processes speech as it arrives
-4. **AI Response**: Gemini generates streaming text responses
-5. **TTS Streaming**: Murf WebSocket converts text to base64 audio chunks
-6. **Audio Delivery**: Base64 chunks sent to client via WebSocket
-7. **Client Processing**: JavaScript accumulates and logs audio chunks
-8. **Console Output**: Real-time acknowledgments of audio data reception
+4. **AI Response**: Gemini generates streaming text responses with Markdown formatting
+5. **TTS Streaming**: Murf WebSocket converts text to audio data
+6. **Audio Delivery**: TTS audio sent to client via WebSocket for immediate playback
+7. **Client Processing**: JavaScript renders Markdown text and plays audio seamlessly
+8. **Real-time Display**: Live text streaming with proper formatting and audio feedback
 
-### Base64 Audio Streaming
+### WebSocket Audio Integration
 
-The application implements a complete audio streaming solution where:
+The application implements a complete voice interaction solution where:
 - TTS audio is generated in real-time by Murf WebSocket service
-- Audio chunks are encoded as base64 strings
-- Base64 data is transmitted via WebSocket to the client
-- Client accumulates chunks in an array for processing
-- Console logs provide acknowledgment of audio data reception
-- No automatic audio playback - focus on data streaming
+- Audio data is transmitted via WebSocket to the client
+- Client plays audio immediately using Web Audio API
+- Text responses are rendered with Markdown support including syntax highlighting
+- Clean UI with proper text alignment for streaming content
+- Seamless voice-to-voice conversation with rich text formatting
 
 ## 📁 Project Structure
 
@@ -113,7 +114,7 @@ The application implements a complete audio streaming solution where:
 - Murf AI API key
 - AssemblyAI API key  
 - Google Gemini API key
-- Modern browser with microphone support
+- Modern browser with microphone support and JavaScript enabled for Markdown rendering
 
 ### Installation
 
@@ -151,19 +152,19 @@ The application implements a complete audio streaming solution where:
 2. **Connect**: WebSocket establishes connection to `/ws/audio-stream`
 3. **Begin Recording**: Click to start real-time audio capture
 4. **Watch Live Transcription**: See your words appear as you speak
-5. **View AI Response**: Watch character-by-character response generation
-6. **Monitor Audio Chunks**: Check console for base64 audio acknowledgments
+5. **View AI Response**: Watch character-by-character response generation with Markdown formatting
+6. **Listen to Audio**: Hear AI responses played back automatically via Web Audio API
 7. **Track Session**: Monitor connection status and streaming metrics
 
-### Console Audio Logging
+### Audio & Text Processing
 
-The application provides detailed console output for audio streaming:
+The application provides seamless voice interaction with:
 ```javascript
-🎵 Audio chunk received: #1, Size: 1024 bytes, Total chunks: 1
-📊 Accumulated 1 audio chunks, Total size: 1024 bytes
-🎵 Audio chunk received: #2, Size: 1024 bytes, Total chunks: 2
-📊 Accumulated 2 audio chunks, Total size: 2048 bytes
-✅ Audio streaming complete! Received 15 chunks totaling 15360 bytes
+� Recording started...
+📝 Transcription: "Hello, how are you today?"
+🤖 AI Response streaming...
+🎵 Audio playback started
+✅ Response complete! Markdown rendered with formatting
 ```
 
 ### Audio Data Structure
@@ -188,31 +189,29 @@ totalAudioSize = 15360; // bytes
 
 **Audio Streaming Messages:**
 - `llm_streaming_start` - AI response generation begins
-- `llm_streaming_chunk` - Character-by-character AI text
+- `llm_streaming_chunk` - Character-by-character AI text with Markdown support
 - `tts_streaming_start` - Audio generation begins  
-- `tts_audio_chunk` - Base64 audio chunk with metadata
-- `llm_streaming_complete` - Complete response and audio summary
+- `tts_audio_chunk` - Audio data with playback metadata
+- `llm_streaming_complete` - Complete response with audio summary
 
-**Audio Chunk Format:**
+**Text Rendering Features:**
 ```json
 {
-  "type": "tts_audio_chunk",
-  "audio_base64": "UklGRpAAAgBXQVZFZm10...",
-  "chunk_number": 1,
-  "chunk_size": 1024,
-  "total_size": 1024,
-  "is_final": false,
+  "type": "llm_streaming_chunk",
+  "text": "Here's a **bold** example with `code` formatting",
+  "markdown_enabled": true,
+  "syntax_highlighting": true,
   "timestamp": "2025-08-22T10:30:45.123Z"
 }
 ```
 
-### Audio Processing Features
+### Audio & Text Processing Features
 
-- **Real-Time Delivery**: Sub-second latency for audio chunk delivery
-- **Chunk Accumulation**: Client-side array collection of base64 data
-- **Progress Tracking**: Live monitoring of chunks received and total size
-- **Console Acknowledgments**: Detailed logging of audio data reception
-- **Session Persistence**: All streaming data saved to database and files
+- **Real-Time Audio Playback**: Immediate TTS audio delivery with Web Audio API
+- **Markdown Rendering**: Rich text formatting with syntax highlighting support
+- **Live Text Streaming**: Character-by-character response display with proper alignment
+- **Seamless Integration**: Synchronized audio and text delivery
+- **Session Persistence**: All conversation data saved to database and files
 - **Error Handling**: Robust error recovery for streaming interruptions
 
 ## 🎯 Key Implementation Features
