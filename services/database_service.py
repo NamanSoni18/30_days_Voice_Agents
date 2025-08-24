@@ -2,13 +2,18 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from typing import List, Dict, Optional
 from datetime import datetime
 import logging
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
-    def __init__(self, mongodb_url: str = "mongodb://localhost:27017"):
-        self.mongodb_url = mongodb_url
+    def __init__(self, mongodb_url: str = None):
+        self.mongodb_url = mongodb_url or os.getenv("MONGODB_URL")
         self.client = None
         self.db = None
         self.in_memory_store = {}

@@ -86,7 +86,7 @@ voice-agent/
    ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
    GEMINI_API_KEY=your_gemini_api_key_here
    MURF_VOICE_ID=en-IN-aarav
-   MONGODB_URL=mongodb://localhost:27017
+   MONGODB_URL=your_mongodb_url_here
    ```
 
 4. **Run the application**

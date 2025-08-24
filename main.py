@@ -56,7 +56,7 @@ def initialize_services() -> APIKeyConfig:
         assemblyai_api_key=os.getenv("ASSEMBLYAI_API_KEY"),
         murf_api_key=os.getenv("MURF_API_KEY"),
         murf_voice_id=os.getenv("MURF_VOICE_ID", "en-IN-aarav"),
-        mongodb_url=os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+        mongodb_url=os.getenv("MONGODB_URL")
     )
     
     global stt_service, llm_service, tts_service, database_service, assemblyai_streaming_service, murf_websocket_service
