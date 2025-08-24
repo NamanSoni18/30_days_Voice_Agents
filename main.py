@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request, UploadFile, File, Path, HTTPException, Web
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.encoders import jsonable_encoder
 import os
 import uuid
 import uvicorn
@@ -82,7 +81,16 @@ async def startup_event():
     
     config = initialize_services()
     if database_service:
-        await database_service.connect()
+        try:
+            db_connected = await database_service.connect()
+            if db_connected:
+                logger.info("✅ Database service connected successfully")
+            else:
+                logger.warning("⚠️ Database service running in fallback mode")
+        except Exception as e:
+            logger.error(f"❌ Database service initialization error: {e}")
+    else:
+        logger.error("❌ Database service not initialized")
     
     logger.info("✅ Application startup completed")
 
@@ -105,7 +113,6 @@ async def home(request: Request):
     if not session_id:
         session_id = str(uuid.uuid4())
     
-    logger.info(f"Serving home page for session: {session_id}")
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "session_id": session_id
@@ -116,6 +123,9 @@ async def home(request: Request):
 async def get_backend_status():
     """Get backend status"""
     try:
+        db_connected = database_service.is_connected() if database_service else False
+        db_test_result = await database_service.test_connection() if database_service else False
+        
         return BackendStatusResponse(
             status="healthy",
             services={
@@ -123,6 +133,8 @@ async def get_backend_status():
                 "llm": llm_service is not None,
                 "tts": tts_service is not None,
                 "database": database_service is not None,
+                "database_connected": db_connected,
+                "database_test": db_test_result,
                 "assemblyai_streaming": assemblyai_streaming_service is not None,
                 "murf_websocket": murf_websocket_service is not None
             },
@@ -131,6 +143,7 @@ async def get_backend_status():
     except Exception as e:
         logger.error(f"Error getting backend status: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
 
 
 @app.get("/agent/chat/{session_id}/history", response_model=ChatHistoryResponse)
@@ -154,6 +167,24 @@ async def get_chat_history_endpoint(session_id: str = Path(..., description="Ses
         )
 
 
+
+
+
+@app.delete("/agent/chat/{session_id}/history")
+async def clear_session_history(session_id: str = Path(..., description="Session ID")):
+    """Clear chat history for a specific session"""
+    try:
+        success = await database_service.clear_session_history(session_id)
+        if success:
+            logger.info(f"Chat history cleared for session: {session_id}")
+            return {"success": True, "message": f"Chat history cleared for session {session_id}"}
+        else:
+            return {"success": False, "message": f"Failed to clear chat history for session {session_id}"}
+    except Exception as e:
+        logger.error(f"Error clearing session history for {session_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.post("/agent/chat/{session_id}", response_model=VoiceChatResponse)
 async def chat_with_agent(
     session_id: str = Path(..., description="Session ID"),
@@ -163,108 +194,55 @@ async def chat_with_agent(
     transcribed_text = ""
     response_text = ""
     audio_url = None
+    temp_audio_path = None
     
     try:
-        # Get services status for better error handling
+        # Validate services availability
         config = initialize_services()
-        
         if not config.are_keys_valid:
             missing_keys = config.validate_keys()
-            logger.error(f"Missing API keys for session {session_id}: {missing_keys}")
-            if tts_service:
-                fallback_audio = await tts_service.generate_fallback_audio(
-                    get_fallback_message(ErrorType.API_KEYS_MISSING)
-                )
+            error_message = get_fallback_message(ErrorType.API_KEYS_MISSING)
+            fallback_audio = await tts_service.generate_fallback_audio(error_message) if tts_service else None
             return VoiceChatResponse(
                 success=False,
-                message=get_fallback_message(ErrorType.API_KEYS_MISSING),
+                message=error_message,
                 transcription="",
-                llm_response=get_fallback_message(ErrorType.API_KEYS_MISSING),
+                llm_response=error_message,
                 audio_url=fallback_audio,
                 session_id=session_id,
                 error_type=ErrorType.API_KEYS_MISSING
             )
         
-        # Save uploaded audio file temporarily
+        # Process audio file
         audio_content = await audio.read()
         temp_audio_path = f"temp_audio_{session_id}_{uuid.uuid4().hex}.wav"
         
-        try:
-            with open(temp_audio_path, "wb") as temp_file:
-                temp_file.write(audio_content)
-        except Exception as e:
-            logger.error(f"Error saving temp audio for session {session_id}: {str(e)}")
-            fallback_audio = None
-            if tts_service:
-                fallback_audio = await tts_service.generate_fallback_audio(
-                    get_fallback_message(ErrorType.FILE_ERROR)
-                )
-            return VoiceChatResponse(
-                success=False,
-                message=get_fallback_message(ErrorType.FILE_ERROR),
-                transcription="",
-                llm_response=get_fallback_message(ErrorType.FILE_ERROR),
-                audio_url=fallback_audio,
-                session_id=session_id,
-                error_type=ErrorType.FILE_ERROR
-            )
+        with open(temp_audio_path, "wb") as temp_file:
+            temp_file.write(audio_content)
         
-        # Transcribe audio to text
-        try:
-            transcribed_text = await stt_service.transcribe_audio(temp_audio_path)
-            logger.info(f"Transcription successful for session {session_id}: {transcribed_text[:100]}")
-        except Exception as e:
-            logger.error(f"STT error for session {session_id}: {str(e)}")
-            if tts_service:
-                fallback_audio = await tts_service.generate_fallback_audio(
-                    get_fallback_message(ErrorType.STT_ERROR)
-                )
-            return VoiceChatResponse(
-                success=False,
-                message=get_fallback_message(ErrorType.STT_ERROR),
-                transcription="",
-                llm_response=get_fallback_message(ErrorType.STT_ERROR),
-                audio_url=fallback_audio,
-                session_id=session_id,
-                error_type=ErrorType.STT_ERROR
-            )
-        finally:
-            # Clean up temporary file
-            try:
-                if os.path.exists(temp_audio_path):
-                    os.remove(temp_audio_path)
-            except Exception as e:
-                logger.warning(f"Failed to delete temp file {temp_audio_path}: {str(e)}")
+        # Transcribe audio
+        transcribed_text = await stt_service.transcribe_audio(temp_audio_path)
         
-        # Generate LLM response
-        try:
+        # Generate LLM response with chat history
+        if not database_service:
+            chat_history = []
+            user_save_success = False
+            assistant_save_success = False
+        else:
             chat_history = await database_service.get_chat_history(session_id)
-            await database_service.add_message_to_history(session_id, "user", transcribed_text)
-            response_text = await llm_service.generate_response(transcribed_text, chat_history)
-            await database_service.add_message_to_history(session_id, "assistant", response_text)
-            logger.info(f"LLM response generated for session {session_id}: {response_text[:100]}")
-        except Exception as e:
-            logger.error(f"LLM error for session {session_id}: {str(e)}")
-            response_text = get_fallback_message(ErrorType.LLM_ERROR)
+            
+            # Save user message to chat history
+            user_save_success = await database_service.add_message_to_history(session_id, "user", transcribed_text)
+        
+        response_text = await llm_service.generate_response(transcribed_text, chat_history)
+        
+        if database_service:
+            # Save assistant response to chat history
+            assistant_save_success = await database_service.add_message_to_history(session_id, "assistant", response_text)
         
         # Generate TTS audio
-        try:
-            audio_url = await tts_service.generate_audio(response_text, session_id)
-            logger.info(f"TTS audio generated for session {session_id}: {audio_url}")
-        except Exception as e:
-            logger.error(f"TTS error for session {session_id}: {str(e)}")
-            fallback_audio = await tts_service.generate_fallback_audio(
-                get_fallback_message(ErrorType.TTS_ERROR)
-            )
-            return VoiceChatResponse(
-                success=False,
-                message=get_fallback_message(ErrorType.TTS_ERROR),
-                transcription=transcribed_text,
-                llm_response=response_text,
-                audio_url=fallback_audio,
-                error_type=ErrorType.TTS_ERROR
-            )
-        logger.info(f"Voice chat completed successfully for session: {session_id}")
+        audio_url = await tts_service.generate_audio(response_text, session_id)
+        
         return VoiceChatResponse(
             success=True,
             message="Voice chat processed successfully",
@@ -275,21 +253,41 @@ async def chat_with_agent(
         )
         
     except Exception as e:
-        logger.error(f"Unexpected error in chat_with_agent: {str(e)}")
-        fallback_audio = None
-        if tts_service:
-            fallback_audio = await tts_service.generate_fallback_audio(
-                get_fallback_message(ErrorType.GENERAL_ERROR)
-            )
+        logger.error(f"Error in chat_with_agent for session {session_id}: {str(e)}")
+        
+        # Generate appropriate error response based on the stage where error occurred
+        if not transcribed_text:
+            error_type = ErrorType.STT_ERROR
+            error_message = get_fallback_message(ErrorType.STT_ERROR)
+        elif not response_text:
+            error_type = ErrorType.LLM_ERROR
+            error_message = get_fallback_message(ErrorType.LLM_ERROR)
+        elif not audio_url:
+            error_type = ErrorType.TTS_ERROR
+            error_message = get_fallback_message(ErrorType.TTS_ERROR)
+        else:
+            error_type = ErrorType.GENERAL_ERROR
+            error_message = get_fallback_message(ErrorType.GENERAL_ERROR)
+        
+        fallback_audio = await tts_service.generate_fallback_audio(error_message) if tts_service else None
         
         return VoiceChatResponse(
             success=False,
-            message=get_fallback_message(ErrorType.GENERAL_ERROR),
+            message=error_message,
             transcription=transcribed_text,
-            llm_response=get_fallback_message(ErrorType.GENERAL_ERROR),
+            llm_response=response_text or error_message,
             audio_url=fallback_audio,
-            error_type=ErrorType.GENERAL_ERROR
+            session_id=session_id,
+            error_type=error_type
         )
+    
+    finally:
+        # Clean up temporary file
+        if temp_audio_path and os.path.exists(temp_audio_path):
+            try:
+                os.remove(temp_audio_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete temp file {temp_audio_path}: {str(e)}")
         
 
 class ConnectionManager:
@@ -343,20 +341,20 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
         session_locks[session_id] = asyncio.Lock()
     
     async with session_locks[session_id]:
-        print(f"🔒 Acquired session lock for: {session_id}")
-        
-        # Initialize variables at function scope to avoid UnboundLocalError
+        # Initialize variables at function scope
         accumulated_response = ""
         audio_chunk_count = 0
         total_audio_size = 0
         
-        print(f"🤖 Starting LLM streaming for: {user_message}")
-        
         try:
             # Get chat history
             try:
-                chat_history = await database_service.get_chat_history(session_id)
-                await database_service.add_message_to_history(session_id, "user", user_message)
+                if not database_service:
+                    chat_history = []
+                else:
+                    chat_history = await database_service.get_chat_history(session_id)
+                    # Save user message to chat history
+                    save_success = await database_service.add_message_to_history(session_id, "user", user_message)
             except Exception as e:
                 logger.error(f"Chat history error: {str(e)}")
                 chat_history = []
@@ -373,15 +371,15 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
             # Connect to Murf WebSocket
             try:
                 await murf_websocket_service.connect()
-                logger.info("Connected to Murf WebSocket for streaming TTS")
                 
                 # Create async generator for LLM streaming
                 async def llm_text_stream():
                     nonlocal accumulated_response
+                    chunk_count = 0
                     async for chunk in llm_service.generate_streaming_response(user_message, chat_history):
                         if chunk:
+                            chunk_count += 1
                             accumulated_response += chunk
-                            print(f"🤖 LLM chunk: {chunk}", end="", flush=True)
                             
                             # Send chunk to client
                             chunk_message = {
@@ -393,6 +391,10 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                             await manager.send_personal_message(json.dumps(chunk_message), websocket)
                             
                             yield chunk
+                    
+                    if not accumulated_response.strip():
+                        logger.error(f"❌ Empty accumulated response for: '{user_message}'")
+                        raise Exception("Empty response from LLM stream")
                 
                 # Send LLM stream to Murf and receive base64 audio
                 tts_start_message = {
@@ -422,7 +424,6 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                         
                         # Check if this is the final chunk
                         if audio_response["is_final"]:
-                            print(f"\n🎵 TTS streaming completed. Total audio chunks: {audio_chunk_count}")
                             break
                     
                     elif audio_response["type"] == "status":
@@ -450,12 +451,10 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                 except Exception as e:
                     logger.error(f"Error disconnecting from Murf WebSocket: {str(e)}")
             
-            print()
-            print(f"🤖 LLM streaming completed. Total response: {len(accumulated_response)} characters")
-            
             # Save to chat history
             try:
-                await database_service.add_message_to_history(session_id, "assistant", accumulated_response)
+                if database_service:
+                    save_success = await database_service.add_message_to_history(session_id, "assistant", accumulated_response)
             except Exception as e:
                 logger.error(f"Failed to save assistant response to history: {str(e)}")
             
@@ -467,6 +466,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                 "total_length": len(accumulated_response),
                 "audio_chunks_received": audio_chunk_count,
                 "total_audio_size": total_audio_size,
+                "session_id": session_id,  # Include session_id in response
                 "timestamp": datetime.now().isoformat()
             }
             await manager.send_personal_message(json.dumps(complete_message), websocket)
@@ -481,13 +481,20 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
             await manager.send_personal_message(json.dumps(error_message), websocket)
         
         finally:
-            print(f"🔓 Released session lock for: {session_id}")
+            pass  # Session lock is automatically released
 
 
 @app.websocket("/ws/audio-stream")
 async def audio_stream_websocket(websocket: WebSocket):
     await manager.connect(websocket)
-    session_id = str(uuid.uuid4())
+    
+    # Try to get session_id from query parameters first
+    query_params = dict(websocket.query_params)
+    session_id = query_params.get('session_id')
+    
+    if not session_id:
+        session_id = str(uuid.uuid4())
+    
     audio_filename = f"streamed_audio_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
     audio_filepath = os.path.join("streamed_audio", audio_filename)
     os.makedirs("streamed_audio", exist_ok=True)
@@ -503,9 +510,8 @@ async def audio_stream_websocket(websocket: WebSocket):
                 # Only show final transcriptions and trigger LLM streaming
                 if transcript_data.get("type") == "final_transcript":
                     final_text = transcript_data.get('text', '').strip()
-                    print(f"📝 Final transcript: {final_text}")
                     
-                    # Normalize text for comparison (remove punctuation, convert to lowercase)
+                    # Normalize text for comparison
                     normalized_current = final_text.lower().strip('.,!?;: ')
                     normalized_last = last_processed_transcript.lower().strip('.,!?;: ')
                     
@@ -513,26 +519,17 @@ async def audio_stream_websocket(websocket: WebSocket):
                     current_time = datetime.now().timestamp()
                     time_since_last = current_time - last_processing_time
                     
-                    # Prevent duplicate processing of the same or very similar transcript
+                    # Prevent duplicate processing
                     if (final_text and 
                         normalized_current != normalized_last and 
                         len(normalized_current) > 0 and 
-                        time_since_last >= 2.0 and  # 2 second cooldown
+                        time_since_last >= 2.0 and
                         llm_service):
                         
                         last_processed_transcript = final_text
                         last_processing_time = current_time
-                        print(f"🔄 Processing new transcript: {final_text}")
                         await handle_llm_streaming(final_text, session_id, websocket)
-                    elif normalized_current == normalized_last:
-                        print(f"⚠️ Skipping duplicate/similar transcript: {final_text} (already processed: {last_processed_transcript})")
-                    elif time_since_last < 2.0:
-                        print(f"⚠️ Skipping transcript due to cooldown: {final_text} (last processed {time_since_last:.1f}s ago)")
-                    elif len(normalized_current) == 0:
-                        print(f"⚠️ Skipping empty transcript: '{final_text}'")
                         
-            else:
-                logger.debug("Skipping transcription callback - WebSocket no longer active")
         except Exception as e:
             logger.error(f"Error sending transcription: {e}")
 
@@ -557,7 +554,6 @@ async def audio_stream_websocket(websocket: WebSocket):
             "timestamp": datetime.now().isoformat()
         }
         await manager.send_personal_message(json.dumps(welcome_message), websocket)
-        logger.info(f"Audio streaming session started: {session_id}")
         
         with open(audio_filepath, "wb") as audio_file:
             chunk_count = 0
@@ -568,7 +564,26 @@ async def audio_stream_websocket(websocket: WebSocket):
                     message = await websocket.receive()
                     
                     if "text" in message:
-                        command = message["text"]
+                        text_data = message["text"]
+                        
+                        # Try to parse as JSON first (for session_id message)
+                        try:
+                            command_data = json.loads(text_data)
+                            if isinstance(command_data, dict) and command_data.get("type") == "session_id":
+                                # Update session_id if provided from frontend
+                                new_session_id = command_data.get("session_id")
+                                if new_session_id and new_session_id != session_id:
+                                    logger.info(f"Updating session_id from {session_id} to {new_session_id}")
+                                    session_id = new_session_id
+                                    # Update audio filename with new session ID
+                                    audio_filename = f"streamed_audio_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+                                    audio_filepath = os.path.join("streamed_audio", audio_filename)
+                                continue
+                        except json.JSONDecodeError:
+                            # Not JSON, treat as regular command
+                            pass
+                        
+                        command = text_data
                         
                         if command == "start_streaming":
                             response = {
@@ -635,7 +650,6 @@ async def audio_stream_websocket(websocket: WebSocket):
     except WebSocketDisconnect:
         is_websocket_active = False
         manager.disconnect(websocket)
-        logger.info(f"Audio streaming WebSocket disconnected for session: {session_id}")
     except Exception as e:
         is_websocket_active = False
         logger.error(f"Audio streaming WebSocket error: {e}")
@@ -644,7 +658,6 @@ async def audio_stream_websocket(websocket: WebSocket):
         is_websocket_active = False
         if assemblyai_streaming_service:
             await assemblyai_streaming_service.stop_streaming_transcription()
-        logger.info(f"Audio streaming session ended: {session_id}")
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>30 Days of Voice Agents - FastAPI</title>
+    <title>30 Days of Voice Agents - Live Streaming</title>
     <link rel="stylesheet" href="/static/style.css" />
     <!-- Marked.js for Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -14,15 +14,14 @@
   <body>
     <div class="container">
       <header>
-        <h1>Murf AI Voice Agents</h1>
+        <h1>🌊 Live AI Voice Agent</h1>
+        <p class="subtitle">Real-time conversational AI with instant responses</p>
       </header>
 
-      
-
-      <main class="voice-agent-section">
+      <main class="live-voice-agent-section">
         <div class="card">
-          <h1>AI Voice Agent</h1>
-          <p>Ask me anything! Record your question and I'll respond with voice. Chat history is maintained across the session.</p>
+          <h1>Live Conversational AI</h1>
+          <p>Start speaking and have a real-time conversation with the AI. Your questions and responses are automatically saved to chat history.</p>
           
           <div class="session-info">
             <small>Session ID: <span id="sessionId">{{ session_id }}</span></small>
@@ -37,55 +36,7 @@
               <!-- Chat history will be populated here -->
             </div>
           </div>
-          
-          <div class="controls">
-            <button id="voiceQueryBtn" class="btn primary" data-state="ready">
-              <span class="btn-icon">🎤</span>
-              <span class="btn-text">Start Recording</span>
-            </button>
-          </div>
 
-          <div id="voiceQueryStatus" class="recording-status" style="display: none;">
-            <div class="recording-indicator">
-              <div class="pulse"></div>
-              <span>Recording your question...</span>
-              <span id="voiceQueryTimer" class="recording-timer">0s</span>
-            </div>
-          </div>
-
-          <div id="voiceQueryMessageDisplay" class="message-display"></div>
-          
-          <div id="voiceQueryContainer" class="voice-query-container" style="display: none;">
-            <div class="query-results">
-              <div class="transcription-section">
-                <h4>Your Question:</h4>
-                <div id="voiceQueryTranscription" class="transcription-text"></div>
-              </div>
-              
-              <div class="llm-response-section">
-                <h4>AI Response:</h4>
-                <div id="voiceQueryLLMResponse" class="llm-response-text"></div>
-              </div>
-              
-              <div class="response-audio-section" style="display: none;">
-                <h4>Listen to Response:</h4>
-                <audio id="voiceQueryAudioPlayer" controls style="display: none;">
-                  Your browser does not support the audio element.
-                </audio>
-              </div>
-              
-              <div class="voice-query-actions">
-                <button id="askAgainBtn" class="btn primary">Ask Another Question</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-
-      <!-- Audio Streaming Section (Day 16) -->
-      <main class="audio-streaming-section">
-        <div class="card">
-          <h1>🎵 Audio Streaming using Websockets</h1>          
           <div class="streaming-info">
             <div class="status-indicator">
               <span id="connectionStatus" class="status-badge disconnected">Disconnected</span>
@@ -94,22 +45,14 @@
           </div>
           
           <div class="controls">
-            <button id="audioStreamBtn" class="btn secondary" data-state="ready">
+            <button id="audioStreamBtn" class="btn primary" data-state="ready">
               <span class="btn-icon">🎤</span>
-              <span class="btn-text">Start Audio Streaming</span>
+              <span class="btn-text">Start Live Conversation</span>
             </button>
-            
-            <!-- HIDDEN: Audio Generation UI - View Saved Files Button -->
-            <!-- 
-            <button id="listAudioFilesBtn" class="btn tertiary" style="margin-left: 10px;">
-              <span class="btn-icon">📁</span>
-              <span class="btn-text">View Saved Files</span>
-            </button>
-            -->
           </div>
 
           <div id="audioStreamStatus" class="streaming-status-container" style="display: none;">
-            <h4>Streaming Status:</h4>
+            <h4>Live Conversation Status:</h4>
             <div id="streamingStatusLog" class="status-log"></div>
           </div>
 
@@ -126,18 +69,8 @@
               <span id="playbackStatusText">Audio is streaming...</span>
             </div>
           </div>
-
-          <!-- HIDDEN: Audio Generation UI - Audio Files Container -->
-          <!-- 
-          <div id="audioFilesContainer" class="audio-files-container" style="display: none;">
-            <h4>Saved Audio Files:</h4>
-            <div id="audioFilesList" class="audio-files-list"></div>
-          </div>
-          -->
         </div>
       </main>
-
-
     </div>
 
     <script>

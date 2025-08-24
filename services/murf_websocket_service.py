@@ -160,15 +160,6 @@ class MurfWebSocketService:
                         audio_base64 = data["audio"]
                         total_audio_size += len(audio_base64)
                         
-                        # Print base64 audio to console as requested
-                        print(f"\n🎵 === MURF BASE64 AUDIO CHUNK {audio_chunk_count} ===")
-                        print(f"Context ID: {data.get('context_id', 'N/A')}")
-                        print(f"Base64 Audio Size: {len(audio_base64)} characters")
-                        print(f"Base64 Audio Preview: {audio_base64[:100]}...")
-                        # print(f"Base64 Audio (Full): {audio_base64}")
-                        print(f"Final: {data.get('final', False)}")
-                        print(f"=== END AUDIO CHUNK {audio_chunk_count} ===\n")
-                        
                         # Yield the response
                         yield {
                             "type": "audio_chunk",
@@ -188,7 +179,6 @@ class MurfWebSocketService:
                     
                     else:
                         # Non-audio response
-                        print(f"📊 Non-audio response: {data}")
                         logger.info(f"Received non-audio response: {data}")
                         yield {
                             "type": "status",
