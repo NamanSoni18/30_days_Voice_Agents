@@ -372,16 +372,18 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
             try:
                 await murf_websocket_service.connect()
                 
-                # Create async generator for LLM streaming
-                async def llm_text_stream():
+                # Create async generator that yields chunks and saves to DB when complete
+                async def llm_text_stream_with_save():
                     nonlocal accumulated_response
                     chunk_count = 0
+                    
+                    # Stream LLM response and collect chunks
                     async for chunk in llm_service.generate_streaming_response(user_message, chat_history):
                         if chunk:
                             chunk_count += 1
                             accumulated_response += chunk
                             
-                            # Send chunk to client
+                            # Send chunk to client immediately
                             chunk_message = {
                                 "type": "llm_streaming_chunk",
                                 "chunk": chunk,
@@ -390,9 +392,27 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                             }
                             await manager.send_personal_message(json.dumps(chunk_message), websocket)
                             
+                            # Yield chunk for TTS processing
                             yield chunk
                     
-                    if not accumulated_response.strip():
+                    # LLM streaming is complete - save to database immediately
+                    if accumulated_response.strip():
+                        try:
+                            if database_service:
+                                save_success = await database_service.add_message_to_history(session_id, "assistant", accumulated_response)
+                                logger.info(f"✅ Assistant response saved to database immediately after LLM completion")
+                                
+                                # Send notification that response is saved
+                                save_notification = {
+                                    "type": "response_saved",
+                                    "message": "Assistant response saved to database",
+                                    "response_length": len(accumulated_response),
+                                    "timestamp": datetime.now().isoformat()
+                                }
+                                await manager.send_personal_message(json.dumps(save_notification), websocket)
+                        except Exception as e:
+                            logger.error(f"Failed to save assistant response to database immediately: {str(e)}")
+                    else:
                         logger.error(f"❌ Empty accumulated response for: '{user_message}'")
                         raise Exception("Empty response from LLM stream")
                 
@@ -405,7 +425,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                 await manager.send_personal_message(json.dumps(tts_start_message), websocket)
                 
                 # Stream LLM text to Murf and get base64 audio back
-                async for audio_response in murf_websocket_service.stream_text_to_audio(llm_text_stream()):
+                async for audio_response in murf_websocket_service.stream_text_to_audio(llm_text_stream_with_save()):
                     if audio_response["type"] == "audio_chunk":
                         audio_chunk_count += 1
                         total_audio_size += audio_response["chunk_size"]
@@ -450,13 +470,6 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                     await murf_websocket_service.disconnect()
                 except Exception as e:
                     logger.error(f"Error disconnecting from Murf WebSocket: {str(e)}")
-            
-            # Save to chat history
-            try:
-                if database_service:
-                    save_success = await database_service.add_message_to_history(session_id, "assistant", accumulated_response)
-            except Exception as e:
-                logger.error(f"Failed to save assistant response to history: {str(e)}")
             
             # Send completion notification
             complete_message = {

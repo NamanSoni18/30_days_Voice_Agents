@@ -1,10 +1,18 @@
 document.addEventListener("DOMContentLoaded", function () {
   // Global variables
   let sessionId = getSessionIdFromUrl() || window.SESSION_ID || generateSessionId();
+  let currentAssistantText = ""; // For real-time chat history updates
   
   // DOM elements
   const toggleChatHistoryBtn = document.getElementById("toggleChatHistory");
   const chatHistoryContainer = document.getElementById("chatHistoryContainer");
+  
+  // Modal elements
+  const conversationModal = document.getElementById("conversationModal");
+  const closeModalBtn = document.getElementById("closeModal");
+  const modalCloseBtn = document.getElementById("modalCloseBtn");
+  const modalQuestionContent = document.getElementById("modalQuestionContent");
+  const modalResponseContent = document.getElementById("modalResponseContent");
   
   // Audio streaming variables
   let audioStreamSocket;
@@ -33,6 +41,30 @@ document.addEventListener("DOMContentLoaded", function () {
   if (toggleChatHistoryBtn) {
     toggleChatHistoryBtn.addEventListener("click", toggleChatHistory);
   }
+
+  // Modal event listeners
+  if (closeModalBtn) {
+    closeModalBtn.addEventListener("click", closeModal);
+  }
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener("click", closeModal);
+  }
+  
+  // Close modal when clicking outside
+  if (conversationModal) {
+    conversationModal.addEventListener("click", function(e) {
+      if (e.target === conversationModal) {
+        closeModal();
+      }
+    });
+  }
+  
+  // Close modal with Escape key
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape" && conversationModal && conversationModal.style.display !== "none") {
+      closeModal();
+    }
+  });
 
   // Initialize streaming mode
   initializeStreamingMode();
@@ -177,6 +209,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
       conversationDiv.appendChild(userDiv);
       conversationDiv.appendChild(assistantDiv);
+      
+      // Add click event listener to open modal
+      conversationDiv.addEventListener('click', function() {
+        const userMessage = conv.user.content;
+        const assistantMessage = conv.assistant ? conv.assistant.content : 'No response available';
+        openConversationModal(userMessage, assistantMessage);
+      });
+      
       chatHistoryList.appendChild(conversationDiv);
     });
 
@@ -203,6 +243,45 @@ document.addEventListener("DOMContentLoaded", function () {
         // Reload chat history when showing
         loadChatHistory();
       }
+    }
+  }
+
+  // Modal Functions
+  function openConversationModal(userMessage, assistantMessage) {
+    if (!conversationModal || !modalQuestionContent || !modalResponseContent) return;
+    
+    // Set the content
+    modalQuestionContent.textContent = userMessage;
+    
+    // Parse assistant message as markdown
+    try {
+      if (typeof marked !== "undefined" && assistantMessage) {
+        const markdownHtml = marked.parse(assistantMessage);
+        modalResponseContent.innerHTML = markdownHtml;
+        
+        // Apply syntax highlighting if available
+        if (typeof hljs !== "undefined") {
+          modalResponseContent.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+          });
+        }
+      } else {
+        modalResponseContent.innerHTML = assistantMessage ? assistantMessage.replace(/\n/g, '<br>') : 'No response available';
+      }
+    } catch (error) {
+      console.warn('Markdown parsing error in modal:', error);
+      modalResponseContent.innerHTML = assistantMessage ? assistantMessage.replace(/\n/g, '<br>') : 'No response available';
+    }
+    
+    // Show the modal
+    conversationModal.style.display = "flex";
+    document.body.style.overflow = "hidden"; // Prevent background scrolling
+  }
+
+  function closeModal() {
+    if (conversationModal) {
+      conversationModal.style.display = "none";
+      document.body.style.overflow = ""; // Restore scrolling
     }
   }
 
@@ -301,9 +380,13 @@ document.addEventListener("DOMContentLoaded", function () {
           updateStreamingStatus(`🤖 ${data.message}`, "info");
           resetAudioPlayback();
           displayLLMStreamingStart(data.user_message);
+          // Add user message to chat history immediately
+          addUserMessageToChatHistory(data.user_message);
         } else if (data.type === "llm_streaming_chunk") {
           // Display LLM text chunks as they arrive
           displayLLMTextChunk(data.chunk, data.accumulated_length);
+          // Update the assistant response in chat history in real-time
+          updateAssistantResponseInChatHistory(data.chunk);
         } else if (data.type === "tts_streaming_start") {
           updateStreamingStatus(`🎵 ${data.message}`, "info");
           displayTTSStreamingStart();
@@ -316,14 +399,16 @@ document.addEventListener("DOMContentLoaded", function () {
           updateStreamingStatus(`✅ ${data.message}`, "success");
           displayStreamingComplete(data);
           
-          // Reload chat history after conversation is complete
-          setTimeout(() => {
-            loadChatHistory();
-          }, 1000);
+          // Chat history is now updated in real-time when response is saved
+          // No need for delayed reload
         } else if (data.type === "llm_streaming_error") {
           updateStreamingStatus(`❌ ${data.message}`, "error");
         } else if (data.type === "tts_streaming_error") {
           updateStreamingStatus(`❌ ${data.message}`, "error");
+        } else if (data.type === "response_saved") {
+          updateStreamingStatus(`💾 ${data.message}`, "success");
+          // Response is already being updated in real-time, just mark as saved
+          markResponseAsSaved();
         }
       };
 
@@ -516,6 +601,9 @@ document.addEventListener("DOMContentLoaded", function () {
       audioStreamStatus.style.display = 'none';
     }
     
+    // Reset chat history state
+    currentAssistantText = "";
+    
     resetAudioPlayback();
   }
 
@@ -552,6 +640,141 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function showNoSpeechMessage() {
     // Speech detection happens in backend, UI display disabled
+  }
+
+  // Function to add user message to chat history immediately
+  function addUserMessageToChatHistory(userMessage) {
+    const chatHistoryList = document.getElementById("chatHistoryList");
+    if (!chatHistoryList) return;
+
+    // Remove "no history" message if it exists
+    const noHistoryMsg = chatHistoryList.querySelector('.no-history');
+    if (noHistoryMsg) {
+      noHistoryMsg.remove();
+    }
+
+    // Create new conversation pair
+    const conversationDiv = document.createElement("div");
+    conversationDiv.className = "conversation-pair new-conversation";
+    conversationDiv.id = `conversation-${Date.now()}`;
+
+    const currentTime = new Date();
+
+    // User message
+    const userDiv = document.createElement("div");
+    userDiv.className = "chat-message user";
+    userDiv.innerHTML = `
+      <div class="message-header">
+        <span class="message-role">👤 You</span>
+        <small class="message-time">${currentTime.toLocaleString()}</small>
+      </div>
+      <div class="message-content">${userMessage}</div>
+    `;
+
+    // Assistant message placeholder
+    const assistantDiv = document.createElement("div");
+    assistantDiv.className = "chat-message assistant";
+    assistantDiv.id = "current-assistant-response";
+    assistantDiv.innerHTML = `
+      <div class="message-header">
+        <span class="message-role">🤖 AI Assistant</span>
+        <small class="message-time">${currentTime.toLocaleString()}</small>
+      </div>
+      <div class="message-content" id="assistant-content">
+        <em>Generating response...</em>
+      </div>
+    `;
+
+    conversationDiv.appendChild(userDiv);
+    conversationDiv.appendChild(assistantDiv);
+    chatHistoryList.appendChild(conversationDiv);
+
+    // Add click event listener to open modal
+    conversationDiv.addEventListener('click', function() {
+      const currentUserMessage = userMessage;
+      const assistantMessage = currentAssistantText || 'Response in progress...';
+      openConversationModal(currentUserMessage, assistantMessage);
+    });
+
+    // Scroll to new conversation
+    conversationDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Show notification that new conversation started
+    if (chatHistoryContainer && chatHistoryContainer.style.display === "none") {
+      if (toggleChatHistoryBtn) {
+        toggleChatHistoryBtn.textContent = "Show Chat History (New!)";
+        toggleChatHistoryBtn.style.backgroundColor = "#667eea";
+      }
+    }
+  }
+
+  // Function to update assistant response in real-time
+  function updateAssistantResponseInChatHistory(chunk) {
+    const assistantContent = document.getElementById("assistant-content");
+    if (!assistantContent) return;
+
+    // Accumulate the response text
+    currentAssistantText += chunk;
+
+    // Parse and display the markdown
+    try {
+      if (typeof marked !== "undefined") {
+        const markdownHtml = marked.parse(currentAssistantText);
+        assistantContent.innerHTML = markdownHtml;
+        
+        // Apply syntax highlighting if available
+        if (typeof hljs !== "undefined") {
+          assistantContent.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+          });
+        }
+      } else {
+        assistantContent.innerHTML = currentAssistantText.replace(/\n/g, '<br>');
+      }
+    } catch (error) {
+      console.warn('Markdown parsing error:', error);
+      assistantContent.innerHTML = currentAssistantText.replace(/\n/g, '<br>');
+    }
+
+    // Scroll to keep the conversation visible
+    const assistantDiv = document.getElementById("current-assistant-response");
+    if (assistantDiv) {
+      assistantDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  // Function to mark the response as saved
+  function markResponseAsSaved() {
+    const assistantDiv = document.getElementById("current-assistant-response");
+    if (assistantDiv) {
+      // Remove the ID since this conversation is now complete
+      assistantDiv.removeAttribute('id');
+      const assistantContent = assistantDiv.querySelector('.message-content');
+      if (assistantContent) {
+        assistantContent.removeAttribute('id');
+      }
+      
+      // Add a "saved" indicator
+      const messageHeader = assistantDiv.querySelector('.message-header');
+      if (messageHeader) {
+        const savedIndicator = document.createElement('span');
+        savedIndicator.className = 'saved-indicator';
+        savedIndicator.innerHTML = '💾';
+        savedIndicator.title = 'Response saved to database';
+        savedIndicator.style.marginLeft = '8px';
+        savedIndicator.style.fontSize = '12px';
+        messageHeader.appendChild(savedIndicator);
+      }
+    }
+
+    // Reset the accumulated text for next conversation
+    currentAssistantText = "";
+
+    // Update button text back to normal
+    if (toggleChatHistoryBtn && toggleChatHistoryBtn.textContent.includes("New!")) {
+      toggleChatHistoryBtn.textContent = "Show Chat History";
+      toggleChatHistoryBtn.style.backgroundColor = "";
+    }
   }
 
   function handleAudioChunk(audioData) {
