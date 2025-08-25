@@ -40,11 +40,22 @@
           <div class="streaming-info">
             <div class="status-indicator">
               <span id="connectionStatus" class="status-badge disconnected">Disconnected</span>
+              <span id="currentPersona" class="persona-badge">Developer</span>
               <small id="streamingSessionId" class="streaming-session"></small>
             </div>
           </div>
           
           <div class="controls">
+            <div class="persona-selection">
+              <label for="personaSelect">AI Persona:</label>
+              <select id="personaSelect" class="persona-dropdown">
+                <option value="developer">Developer (Default)</option>
+                <option value="aizen">Sosuke Aizen (Bleach)</option>
+                <option value="luffy">Monkey D. Luffy (One Piece)</option>
+                <option value="politician">Politician</option>
+              </select>
+            </div>
+            
             <button id="audioStreamBtn" class="btn primary" data-state="ready">
               <span class="btn-icon">🎤</span>
               <span class="btn-text">Start Live Conversation</span>

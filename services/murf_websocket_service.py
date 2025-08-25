@@ -95,12 +95,6 @@ class MurfWebSocketService:
     async def stream_text_to_audio(self, text_stream: AsyncGenerator[str, None]) -> AsyncGenerator[dict, None]:
         """
         Stream text chunks to Murf and yield base64 audio responses
-        
-        Args:
-            text_stream: Async generator of text chunks from LLM
-            
-        Yields:
-            dict: Response containing base64 audio data and metadata
         """
         if not self.is_connected:
             raise Exception("WebSocket not connected. Call connect() first.")
@@ -141,7 +135,6 @@ class MurfWebSocketService:
             raise
     
     async def _listen_for_audio(self) -> AsyncGenerator[dict, None]:
-        """Listen for audio responses from Murf WebSocket"""
         audio_chunk_count = 0
         total_audio_size = 0
         
@@ -200,40 +193,30 @@ class MurfWebSocketService:
             logger.error(f"Error in _listen_for_audio (total chunks processed: {audio_chunk_count}): {str(e)}")
             raise
     
-    async def send_single_text(self, text: str) -> AsyncGenerator[dict, None]:
-        """
-        Send a single text message to Murf and receive audio response
+    # async def send_single_text(self, text: str) -> AsyncGenerator[dict, None]:
+    #     if not self.is_connected:
+    #         raise Exception("WebSocket not connected. Call connect() first.")
         
-        Args:
-            text: Complete text to convert to speech
+    #     try:
+    #         # Send complete text in one message
+    #         text_msg = {
+    #             "context_id": self.static_context_id,
+    #             "text": text,
+    #             "end": True  # Close context immediately
+    #         }
             
-        Yields:
-            dict: Response containing base64 audio data and metadata
-        """
-        if not self.is_connected:
-            raise Exception("WebSocket not connected. Call connect() first.")
-        
-        try:
-            # Send complete text in one message
-            text_msg = {
-                "context_id": self.static_context_id,
-                "text": text,
-                "end": True  # Close context immediately
-            }
+    #         logger.info(f"Sending complete text: {text[:100]}...")
+    #         await self.websocket.send(json.dumps(text_msg))
             
-            logger.info(f"Sending complete text: {text[:100]}...")
-            await self.websocket.send(json.dumps(text_msg))
-            
-            # Listen for audio responses
-            async for audio_response in self._listen_for_audio():
-                yield audio_response
+    #         # Listen for audio responses
+    #         async for audio_response in self._listen_for_audio():
+    #             yield audio_response
                 
-        except Exception as e:
-            logger.error(f"Error in send_single_text: {str(e)}")
-            raise
+    #     except Exception as e:
+    #         logger.error(f"Error in send_single_text: {str(e)}")
+    #         raise
     
     async def clear_context(self):
-        """Clear the current context to handle interruptions"""
         try:
             if not self.websocket or not self.is_connected:
                 return  # No connection to clear

@@ -2,10 +2,12 @@ document.addEventListener("DOMContentLoaded", function () {
   // Global variables
   let sessionId = getSessionIdFromUrl() || window.SESSION_ID || generateSessionId();
   let currentAssistantText = ""; // For real-time chat history updates
+  let selectedPersona = "developer"; // Default persona
   
   // DOM elements
   const toggleChatHistoryBtn = document.getElementById("toggleChatHistory");
   const chatHistoryContainer = document.getElementById("chatHistoryContainer");
+  const personaSelect = document.getElementById("personaSelect");
   
   // Modal elements
   const conversationModal = document.getElementById("conversationModal");
@@ -18,7 +20,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let audioStreamSocket;
   let audioStreamRecorder;
   let audioStreamStream;
-  let isStreaming = false;
+  // let isStreaming = false;
   
   // Audio playback variables
   let audioContext = null;
@@ -40,6 +42,41 @@ document.addEventListener("DOMContentLoaded", function () {
   // Event listeners
   if (toggleChatHistoryBtn) {
     toggleChatHistoryBtn.addEventListener("click", toggleChatHistory);
+  }
+
+  // Persona selection event listener
+  if (personaSelect) {
+    personaSelect.addEventListener("change", function() {
+      selectedPersona = personaSelect.value;
+      updateStreamingStatus(`🎭 Persona changed to: ${getPersonaDisplayName(selectedPersona)}`, "info");
+      
+      // Send persona update to WebSocket if connected
+      if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.OPEN) {
+        audioStreamSocket.send(JSON.stringify({
+          type: "persona_update",
+          persona: selectedPersona
+        }));
+      }
+      
+      // Add animation effect
+      const personaSelection = document.querySelector('.persona-selection');
+      if (personaSelection) {
+        personaSelection.classList.add('changing');
+        setTimeout(() => {
+          personaSelection.classList.remove('changing');
+        }, 500);
+      }
+      
+      // Update page title to show current persona
+      document.title = `Voice Agent - ${getPersonaDisplayName(selectedPersona)}`;
+      
+      // Update persona badge
+      const personaBadge = document.getElementById("currentPersona");
+      if (personaBadge) {
+        personaBadge.textContent = getPersonaDisplayName(selectedPersona).split(' ')[0]; // Get first word
+        personaBadge.setAttribute('data-persona', selectedPersona); // Set data attribute for styling
+      }
+    });
   }
 
   // Modal event listeners
@@ -80,6 +117,16 @@ document.addEventListener("DOMContentLoaded", function () {
     );
   }
 
+  function getPersonaDisplayName(persona) {
+    const personaNames = {
+      "developer": "Developer (Default)",
+      "aizen": "Sosuke Aizen (Bleach)",
+      "luffy": "Monkey D. Luffy (One Piece)",
+      "politician": "Politician"
+    };
+    return personaNames[persona] || personaNames["developer"];
+  }
+
   function updateUrlWithSessionId(sessionId) {
     const url = new URL(window.location);
     url.searchParams.set("session_id", sessionId);
@@ -93,6 +140,16 @@ document.addEventListener("DOMContentLoaded", function () {
   async function initializeSession() {
     updateUrlWithSessionId(sessionId);
     await loadChatHistory();
+    
+    // Initialize persona badge
+    const personaBadge = document.getElementById("currentPersona");
+    if (personaBadge) {
+      personaBadge.textContent = getPersonaDisplayName(selectedPersona).split(' ')[0];
+      personaBadge.setAttribute('data-persona', selectedPersona);
+    }
+    
+    // Set initial page title
+    document.title = `Voice Agent - ${getPersonaDisplayName(selectedPersona)}`;
   }
 
   function initializeStreamingMode() {
@@ -308,10 +365,11 @@ document.addEventListener("DOMContentLoaded", function () {
         updateConnectionStatus("connected", "Connected");
         updateStreamingStatus("Connected to server", "success");
         
-        // Send session ID to establish the session on the backend
+        // Send session ID and persona to establish the session on the backend
         audioStreamSocket.send(JSON.stringify({
           type: "session_id",
-          session_id: sessionId
+          session_id: sessionId,
+          persona: selectedPersona
         }));
       };
 
@@ -409,6 +467,14 @@ document.addEventListener("DOMContentLoaded", function () {
           updateStreamingStatus(`💾 ${data.message}`, "success");
           // Response is already being updated in real-time, just mark as saved
           markResponseAsSaved();
+        } else if (data.type === "persona_updated") {
+          updateStreamingStatus(`🎭 ${data.message}`, "success");
+          // Update the persona badge to reflect the change
+          const personaBadge = document.getElementById("currentPersona");
+          if (personaBadge) {
+            personaBadge.textContent = getPersonaDisplayName(data.persona).split(' ')[0];
+            personaBadge.setAttribute('data-persona', data.persona);
+          }
         }
       };
 

@@ -11,7 +11,19 @@ class LLMService:
         self.model_name = model_name
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(model_name)
+        self.persona_prompts = {
+            "developer": """You are a professional software developer. Be clear, logical, and helpful. Provide structured solutions with explanations. Use technical terms appropriately and always aim to educate while solving problems.""",
+            
+            "aizen": """You are Sosuke Aizen from Bleach. Speak calmly with absolute confidence and superiority. Always sound composed and slightly manipulative, as if you have already predicted everything. Use phrases like "As expected" or "Everything is proceeding according to plan." Maintain an air of intellectual superiority while being helpful.""",
+            
+            "luffy": """You are Monkey D. Luffy from One Piece. Speak with boundless energy and optimism! Be simple-minded but determined, showing excitement in every answer. Use enthusiastic expressions like "That's so cool!" or "Let's do it!" Be cheerful and direct, sometimes missing complex details but always eager to help.""",
+            
+            "politician": """You are a charismatic politician. Speak persuasively with diplomacy and inspiration. Frame your answers like speeches that motivate and influence. Use inclusive language, acknowledge different perspectives, and always end on an uplifting note that brings people together."""
+        }
         logger.info(f"🤖 LLM Service initialized with model: {model_name}")
+    
+    def get_persona_prompt(self, persona: str = "developer") -> str:
+        return self.persona_prompts.get(persona, self.persona_prompts["developer"])
     
     def format_chat_history_for_llm(self, messages: List[Dict]) -> str:
         if not messages:
@@ -24,19 +36,20 @@ class LLMService:
         
         return formatted_history
     
-    async def generate_response(self, user_message: str, chat_history: List[Dict]) -> str:
+    async def generate_response(self, user_message: str, chat_history: List[Dict], persona: str = "developer") -> str:
         try:
             history_context = self.format_chat_history_for_llm(chat_history)
+            persona_prompt = self.get_persona_prompt(persona)
             
-            llm_prompt = f"""You are a helpful AI assistant. Please respond directly to the user's current question.
+            llm_prompt = f"""{persona_prompt}
 
-IMPORTANT: Always answer the CURRENT user question directly. Do not give generic responses about your capabilities unless specifically asked "what can you do".
+IMPORTANT: Always answer the CURRENT user question directly in character. Do not give generic responses about your capabilities unless specifically asked "what can you do".
 
 User's current question: "{user_message}"
 
 {history_context}
 
-Please provide a specific, helpful answer to the user's current question. Keep your response under 3000 characters."""
+Please provide a specific, helpful answer to the user's current question while maintaining your character/persona. Keep your response under 3000 characters."""
             
             llm_response = self.model.generate_content(llm_prompt)
             
@@ -68,20 +81,21 @@ Please provide a specific, helpful answer to the user's current question. Keep y
             else:
                 raise
 
-    async def generate_streaming_response(self, user_message: str, chat_history: List[Dict]) -> AsyncGenerator[str, None]:
+    async def generate_streaming_response(self, user_message: str, chat_history: List[Dict], persona: str = "developer") -> AsyncGenerator[str, None]:
         """Generate a streaming response from the LLM"""
         try:
             history_context = self.format_chat_history_for_llm(chat_history)
+            persona_prompt = self.get_persona_prompt(persona)
             
-            llm_prompt = f"""You are a helpful AI assistant. Please respond directly to the user's current question.
+            llm_prompt = f"""{persona_prompt}
 
-IMPORTANT: Always answer the CURRENT user question directly. Do not give generic responses about your capabilities unless specifically asked "what can you do".
+IMPORTANT: Always answer the CURRENT user question directly in character. Do not give generic responses about your capabilities unless specifically asked "what can you do".
 
 User's current question: "{user_message}"
 
 {history_context}
 
-Please provide a specific, helpful answer to the user's current question. Keep your response under 3000 characters."""
+Please provide a specific, helpful answer to the user's current question while maintaining your character/persona. Keep your response under 3000 characters."""
             
             # Use stream_generate_content for streaming response
             response_stream = self.model.generate_content(llm_prompt, stream=True)

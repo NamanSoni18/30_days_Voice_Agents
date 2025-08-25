@@ -168,8 +168,6 @@ async def get_chat_history_endpoint(session_id: str = Path(..., description="Ses
 
 
 
-
-
 @app.delete("/agent/chat/{session_id}/history")
 async def clear_session_history(session_id: str = Path(..., description="Session ID")):
     """Clear chat history for a specific session"""
@@ -185,109 +183,109 @@ async def clear_session_history(session_id: str = Path(..., description="Session
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.post("/agent/chat/{session_id}", response_model=VoiceChatResponse)
-async def chat_with_agent(
-    session_id: str = Path(..., description="Session ID"),
-    audio: UploadFile = File(..., description="Audio file for voice input")
-):
-    """Chat with the voice agent using audio input"""
-    transcribed_text = ""
-    response_text = ""
-    audio_url = None
-    temp_audio_path = None
+# @app.post("/agent/chat/{session_id}", response_model=VoiceChatResponse)
+# async def chat_with_agent(
+#     session_id: str = Path(..., description="Session ID"),
+#     audio: UploadFile = File(..., description="Audio file for voice input")
+# ):
+#     """Chat with the voice agent using audio input"""
+#     transcribed_text = ""
+#     response_text = ""
+#     audio_url = None
+#     temp_audio_path = None
     
-    try:
-        # Validate services availability
-        config = initialize_services()
-        if not config.are_keys_valid:
-            missing_keys = config.validate_keys()
-            error_message = get_fallback_message(ErrorType.API_KEYS_MISSING)
-            fallback_audio = await tts_service.generate_fallback_audio(error_message) if tts_service else None
-            return VoiceChatResponse(
-                success=False,
-                message=error_message,
-                transcription="",
-                llm_response=error_message,
-                audio_url=fallback_audio,
-                session_id=session_id,
-                error_type=ErrorType.API_KEYS_MISSING
-            )
+#     try:
+#         # Validate services availability
+#         config = initialize_services()
+#         if not config.are_keys_valid:
+#             missing_keys = config.validate_keys()
+#             error_message = get_fallback_message(ErrorType.API_KEYS_MISSING)
+#             fallback_audio = await tts_service.generate_fallback_audio(error_message) if tts_service else None
+#             return VoiceChatResponse(
+#                 success=False,
+#                 message=error_message,
+#                 transcription="",
+#                 llm_response=error_message,
+#                 audio_url=fallback_audio,
+#                 session_id=session_id,
+#                 error_type=ErrorType.API_KEYS_MISSING
+#             )
         
-        # Process audio file
-        audio_content = await audio.read()
-        temp_audio_path = f"temp_audio_{session_id}_{uuid.uuid4().hex}.wav"
+#         # Process audio file
+#         audio_content = await audio.read()
+#         temp_audio_path = f"temp_audio_{session_id}_{uuid.uuid4().hex}.wav"
         
-        with open(temp_audio_path, "wb") as temp_file:
-            temp_file.write(audio_content)
+#         with open(temp_audio_path, "wb") as temp_file:
+#             temp_file.write(audio_content)
         
-        # Transcribe audio
-        transcribed_text = await stt_service.transcribe_audio(temp_audio_path)
+#         # Transcribe audio
+#         transcribed_text = await stt_service.transcribe_audio(temp_audio_path)
         
-        # Generate LLM response with chat history
-        if not database_service:
-            chat_history = []
-            user_save_success = False
-            assistant_save_success = False
-        else:
-            chat_history = await database_service.get_chat_history(session_id)
+#         # Generate LLM response with chat history
+#         if not database_service:
+#             chat_history = []
+#             user_save_success = False
+#             assistant_save_success = False
+#         else:
+#             chat_history = await database_service.get_chat_history(session_id)
             
-            # Save user message to chat history
-            user_save_success = await database_service.add_message_to_history(session_id, "user", transcribed_text)
+#             # Save user message to chat history
+#             user_save_success = await database_service.add_message_to_history(session_id, "user", transcribed_text)
         
-        response_text = await llm_service.generate_response(transcribed_text, chat_history)
+#         response_text = await llm_service.generate_response(transcribed_text, chat_history)
         
-        if database_service:
-            # Save assistant response to chat history
-            assistant_save_success = await database_service.add_message_to_history(session_id, "assistant", response_text)
+#         if database_service:
+#             # Save assistant response to chat history
+#             assistant_save_success = await database_service.add_message_to_history(session_id, "assistant", response_text)
         
-        # Generate TTS audio
-        audio_url = await tts_service.generate_audio(response_text, session_id)
+#         # Generate TTS audio
+#         audio_url = await tts_service.generate_audio(response_text, session_id)
         
-        return VoiceChatResponse(
-            success=True,
-            message="Voice chat processed successfully",
-            transcription=transcribed_text,
-            llm_response=response_text,
-            audio_url=audio_url,
-            session_id=session_id
-        )
+#         return VoiceChatResponse(
+#             success=True,
+#             message="Voice chat processed successfully",
+#             transcription=transcribed_text,
+#             llm_response=response_text,
+#             audio_url=audio_url,
+#             session_id=session_id
+#         )
         
-    except Exception as e:
-        logger.error(f"Error in chat_with_agent for session {session_id}: {str(e)}")
+#     except Exception as e:
+#         logger.error(f"Error in chat_with_agent for session {session_id}: {str(e)}")
         
-        # Generate appropriate error response based on the stage where error occurred
-        if not transcribed_text:
-            error_type = ErrorType.STT_ERROR
-            error_message = get_fallback_message(ErrorType.STT_ERROR)
-        elif not response_text:
-            error_type = ErrorType.LLM_ERROR
-            error_message = get_fallback_message(ErrorType.LLM_ERROR)
-        elif not audio_url:
-            error_type = ErrorType.TTS_ERROR
-            error_message = get_fallback_message(ErrorType.TTS_ERROR)
-        else:
-            error_type = ErrorType.GENERAL_ERROR
-            error_message = get_fallback_message(ErrorType.GENERAL_ERROR)
+#         # Generate appropriate error response based on the stage where error occurred
+#         if not transcribed_text:
+#             error_type = ErrorType.STT_ERROR
+#             error_message = get_fallback_message(ErrorType.STT_ERROR)
+#         elif not response_text:
+#             error_type = ErrorType.LLM_ERROR
+#             error_message = get_fallback_message(ErrorType.LLM_ERROR)
+#         elif not audio_url:
+#             error_type = ErrorType.TTS_ERROR
+#             error_message = get_fallback_message(ErrorType.TTS_ERROR)
+#         else:
+#             error_type = ErrorType.GENERAL_ERROR
+#             error_message = get_fallback_message(ErrorType.GENERAL_ERROR)
         
-        fallback_audio = await tts_service.generate_fallback_audio(error_message) if tts_service else None
+#         fallback_audio = await tts_service.generate_fallback_audio(error_message) if tts_service else None
         
-        return VoiceChatResponse(
-            success=False,
-            message=error_message,
-            transcription=transcribed_text,
-            llm_response=response_text or error_message,
-            audio_url=fallback_audio,
-            session_id=session_id,
-            error_type=error_type
-        )
+#         return VoiceChatResponse(
+#             success=False,
+#             message=error_message,
+#             transcription=transcribed_text,
+#             llm_response=response_text or error_message,
+#             audio_url=fallback_audio,
+#             session_id=session_id,
+#             error_type=error_type
+#         )
     
-    finally:
-        # Clean up temporary file
-        if temp_audio_path and os.path.exists(temp_audio_path):
-            try:
-                os.remove(temp_audio_path)
-            except Exception as e:
-                logger.warning(f"Failed to delete temp file {temp_audio_path}: {str(e)}")
+#     finally:
+#         # Clean up temporary file
+#         if temp_audio_path and os.path.exists(temp_audio_path):
+#             try:
+#                 os.remove(temp_audio_path)
+#             except Exception as e:
+#                 logger.warning(f"Failed to delete temp file {temp_audio_path}: {str(e)}")
         
 
 class ConnectionManager:
@@ -333,7 +331,7 @@ manager = ConnectionManager()
 session_locks = {}
 
 # Global function to handle LLM streaming (moved outside WebSocket handler to prevent duplicates)
-async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket):
+async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket, persona: str = "developer"):
     """Handle LLM streaming response and send to Murf WebSocket for TTS"""
     
     # Prevent concurrent streaming for the same session
@@ -378,7 +376,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                     chunk_count = 0
                     
                     # Stream LLM response and collect chunks
-                    async for chunk in llm_service.generate_streaming_response(user_message, chat_history):
+                    async for chunk in llm_service.generate_streaming_response(user_message, chat_history, persona):
                         if chunk:
                             chunk_count += 1
                             accumulated_response += chunk
@@ -514,6 +512,7 @@ async def audio_stream_websocket(websocket: WebSocket):
     is_websocket_active = True
     last_processed_transcript = ""  # Track last processed transcript to prevent duplicates
     last_processing_time = 0  # Track when we last processed a transcript
+    current_persona = "developer"  # Default persona
     
     async def transcription_callback(transcript_data):
         nonlocal last_processed_transcript, last_processing_time
@@ -541,7 +540,7 @@ async def audio_stream_websocket(websocket: WebSocket):
                         
                         last_processed_transcript = final_text
                         last_processing_time = current_time
-                        await handle_llm_streaming(final_text, session_id, websocket)
+                        await handle_llm_streaming(final_text, session_id, websocket, current_persona)
                         
         except Exception as e:
             logger.error(f"Error sending transcription: {e}")
@@ -579,19 +578,45 @@ async def audio_stream_websocket(websocket: WebSocket):
                     if "text" in message:
                         text_data = message["text"]
                         
-                        # Try to parse as JSON first (for session_id message)
+                        # Try to parse as JSON first (for session_id and persona_update messages)
                         try:
                             command_data = json.loads(text_data)
-                            if isinstance(command_data, dict) and command_data.get("type") == "session_id":
-                                # Update session_id if provided from frontend
-                                new_session_id = command_data.get("session_id")
-                                if new_session_id and new_session_id != session_id:
-                                    logger.info(f"Updating session_id from {session_id} to {new_session_id}")
-                                    session_id = new_session_id
-                                    # Update audio filename with new session ID
-                                    audio_filename = f"streamed_audio_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
-                                    audio_filepath = os.path.join("streamed_audio", audio_filename)
-                                continue
+                            if isinstance(command_data, dict):
+                                command_type = command_data.get("type")
+                                
+                                if command_type == "session_id":
+                                    # Update session_id if provided from frontend
+                                    new_session_id = command_data.get("session_id")
+                                    if new_session_id and new_session_id != session_id:
+                                        logger.info(f"Updating session_id from {session_id} to {new_session_id}")
+                                        session_id = new_session_id
+                                        # Update audio filename with new session ID
+                                        audio_filename = f"streamed_audio_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+                                        audio_filepath = os.path.join("streamed_audio", audio_filename)
+                                    
+                                    # Update persona if provided from frontend
+                                    new_persona = command_data.get("persona")
+                                    if new_persona and new_persona != current_persona:
+                                        logger.info(f"Updating persona from {current_persona} to {new_persona}")
+                                        current_persona = new_persona
+                                    continue
+                                
+                                elif command_type == "persona_update":
+                                    # Handle real-time persona updates
+                                    new_persona = command_data.get("persona")
+                                    if new_persona and new_persona != current_persona:
+                                        logger.info(f"Real-time persona update from {current_persona} to {new_persona}")
+                                        current_persona = new_persona
+                                        
+                                        # Send confirmation back to client
+                                        persona_response = {
+                                            "type": "persona_updated",
+                                            "persona": current_persona,
+                                            "message": f"Persona updated to {current_persona}",
+                                            "timestamp": datetime.now().isoformat()
+                                        }
+                                        await manager.send_personal_message(json.dumps(persona_response), websocket)
+                                    continue
                         except json.JSONDecodeError:
                             # Not JSON, treat as regular command
                             pass

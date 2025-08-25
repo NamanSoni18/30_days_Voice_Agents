@@ -129,22 +129,6 @@ class DatabaseService:
             logger.info(f"💾 Message saved to in-memory storage for session {session_id}: {role} - {content[:50]}...")
             return True
     
-    async def get_user_sessions(self, limit: int = 50) -> List[Dict]:
-        """Get recent user sessions for analytics"""
-        if self.db is not None:
-            try:
-                sessions = await self.db.chat_sessions.find(
-                    {},
-                    {"session_id": 1, "created_at": 1, "message_count": 1, "last_activity": 1}
-                ).sort("last_activity", -1).limit(limit).to_list(length=limit)
-                return sessions
-            except Exception as e:
-                logger.error(f"Failed to get user sessions from MongoDB: {str(e)}")
-                return []
-        else:
-            # Return in-memory session data
-            return list(self.user_sessions.items())[:limit]
-    
     async def clear_session_history(self, session_id: str) -> bool:
         """Clear chat history for a specific session"""
         if self.db is not None:
@@ -163,36 +147,6 @@ class DatabaseService:
             if session_id in self.user_sessions:
                 del self.user_sessions[session_id]
             return True
-    
-    async def get_session_stats(self, session_id: str) -> Dict:
-        """Get statistics for a specific session"""
-        if self.db is not None:
-            try:
-                session = await self.db.chat_sessions.find_one({"session_id": session_id})
-                if session:
-                    return {
-                        "session_id": session_id,
-                        "message_count": len(session.get("messages", [])),
-                        "created_at": session.get("created_at"),
-                        "last_activity": session.get("last_activity"),
-                        "total_user_messages": len([m for m in session.get("messages", []) if m["role"] == "user"]),
-                        "total_assistant_messages": len([m for m in session.get("messages", []) if m["role"] == "assistant"])
-                    }
-                return {}
-            except Exception as e:
-                logger.error(f"Failed to get session stats from MongoDB: {str(e)}")
-                return {}
-        else:
-            messages = self.in_memory_store.get(session_id, [])
-            session_info = self.user_sessions.get(session_id, {})
-            return {
-                "session_id": session_id,
-                "message_count": len(messages),
-                "created_at": session_info.get("created_at"),
-                "last_activity": session_info.get("last_activity"),
-                "total_user_messages": len([m for m in messages if m["role"] == "user"]),
-                "total_assistant_messages": len([m for m in messages if m["role"] == "assistant"])
-            }
     
     async def close(self):
         if self.client:
