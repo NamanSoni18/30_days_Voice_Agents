@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let currentStreamingMessage = null; // Track current streaming message in new UI
   let isConnecting = false; // Track connection state
   let isStreaming = false; // Track streaming state
+  let allSessions = []; // Store all sessions
   
   // DOM elements
   const toggleChatHistoryBtn = document.getElementById("toggleChatHistory");
@@ -47,6 +48,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Initialize session
   initializeSession();
+  
+  // Load all sessions on startup
+  loadAllSessions();
 
   // Event listeners for new UI
   if (newChatBtn) {
@@ -678,6 +682,9 @@ document.addEventListener("DOMContentLoaded", function () {
           
           // Reset streaming state after response is saved
           isStreaming = false;
+          
+          // Refresh sessions list to update preview and last activity
+          loadAllSessions();
         } else if (data.type === "persona_updated") {
           updateStreamingStatus(`🎭 ${data.message}`, "success");
           // Update the persona badge to reflect the change
@@ -1482,4 +1489,224 @@ document.addEventListener("DOMContentLoaded", function () {
       statusText.textContent = text;
     }
   }
+
+  // Session Management Functions
+  
+  /**
+   * Load all sessions from the backend
+   */
+  async function loadAllSessions() {
+    try {
+      const response = await fetch('/api/sessions');
+      const data = await response.json();
+      
+      if (data.success) {
+        allSessions = data.sessions;
+        displaySessionsInSidebar();
+      } else {
+        console.error('Failed to load sessions:', data.error);
+      }
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+    }
+  }
+
+  /**
+   * Display sessions in the sidebar grouped by time
+   */
+  function displaySessionsInSidebar() {
+    const today = new Date();
+    const todayChats = document.getElementById('todayChats');
+    const weekChats = document.getElementById('weekChats');
+    const monthChats = document.getElementById('monthChats');
+
+    // Clear existing content
+    if (todayChats) todayChats.innerHTML = '';
+    if (weekChats) weekChats.innerHTML = '';
+    if (monthChats) monthChats.innerHTML = '';
+
+    allSessions.forEach(session => {
+      const sessionDate = new Date(session.last_activity);
+      const timeDiff = today - sessionDate;
+      const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+
+      const chatItem = createChatItem(session);
+
+      if (daysDiff === 0) {
+        // Today
+        if (todayChats) todayChats.appendChild(chatItem);
+      } else if (daysDiff <= 7) {
+        // Past 7 days
+        if (weekChats) weekChats.appendChild(chatItem);
+      } else if (daysDiff <= 30) {
+        // Past 30 days
+        if (monthChats) monthChats.appendChild(chatItem);
+      }
+    });
+
+    // Mark current session as active
+    updateActiveSession();
+  }
+
+  /**
+   * Create a chat item element for the sidebar
+   */
+  function createChatItem(session) {
+    const chatItem = document.createElement('button');
+    chatItem.className = 'chat-item';
+    chatItem.setAttribute('data-session-id', session.session_id);
+    
+    // Create preview text
+    let previewText = session.preview || 'New conversation';
+    if (previewText.length > 40) {
+      previewText = previewText.substring(0, 40) + '...';
+    }
+    
+    chatItem.textContent = previewText;
+    chatItem.title = previewText; // Show full text on hover
+
+    // Add click event to switch to this session
+    chatItem.addEventListener('click', () => {
+      switchToSession(session.session_id);
+    });
+
+    return chatItem;
+  }
+
+  /**
+   * Switch to a different session
+   */
+  async function switchToSession(newSessionId) {
+    if (newSessionId === sessionId) return; // Already on this session
+
+    // Update session ID
+    sessionId = newSessionId;
+    
+    // Update URL without page refresh
+    const newUrl = `${window.location.pathname}?session_id=${sessionId}`;
+    window.history.pushState({ sessionId }, '', newUrl);
+
+    // Update session display
+    updateSessionDisplay();
+    updateActiveSession();
+
+    // Load chat history for this session
+    await loadChatHistory();
+
+    // Disconnect current WebSocket if connected and reconnect with new session
+    if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.OPEN) {
+      audioStreamSocket.close();
+      // Small delay before reconnecting
+      setTimeout(() => {
+        // Don't auto-reconnect, let user click to start streaming
+        updateConnectionStatus('disconnected');
+      }, 100);
+    }
+  }
+
+  /**
+   * Start a new chat session
+   */
+  function startNewChat() {
+    const newSessionId = generateSessionId();
+    switchToSession(newSessionId);
+  }
+
+  /**
+   * Update active session highlighting in sidebar
+   */
+  function updateActiveSession() {
+    // Remove active class from all chat items
+    document.querySelectorAll('.chat-item').forEach(item => {
+      item.classList.remove('active');
+    });
+
+    // Add active class to current session
+    const currentSessionItem = document.querySelector(`[data-session-id="${sessionId}"]`);
+    if (currentSessionItem) {
+      currentSessionItem.classList.add('active');
+    }
+  }
+
+  /**
+   * Update session display in footer
+   */
+  function updateSessionDisplay() {
+    const sessionIdElement = document.getElementById('sessionId');
+    if (sessionIdElement) {
+      // Show only last 8 characters of session ID
+      sessionIdElement.textContent = sessionId.slice(-8);
+      sessionIdElement.title = sessionId; // Show full ID on hover
+    }
+
+    const streamingSessionElement = document.getElementById('streamingSessionId');
+    if (streamingSessionElement) {
+      streamingSessionElement.textContent = sessionId;
+    }
+  }
+
+  /**
+   * Load chat history for current session
+   */
+  async function loadChatHistory() {
+    try {
+      const response = await fetch(`/agent/chat/${sessionId}/history`);
+      const data = await response.json();
+      
+      if (data.success && data.messages) {
+        // Clear current messages
+        if (chatMessages) {
+          chatMessages.innerHTML = '';
+        }
+
+        // Add messages to chat
+        data.messages.forEach(message => {
+          if (message.role === 'user') {
+            addMessageToChat(message.content, true);
+          } else if (message.role === 'assistant') {
+            addMessageToChat(message.content, false);
+          }
+        });
+
+        // If no messages, show welcome message
+        if (data.messages.length === 0) {
+          showWelcomeMessage();
+        }
+      } else {
+        // Show welcome message for new sessions
+        showWelcomeMessage();
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+      showWelcomeMessage();
+    }
+  }
+
+  /**
+   * Show welcome message
+   */
+  function showWelcomeMessage() {
+    if (!chatMessages) return;
+    
+    chatMessages.innerHTML = `
+      <div class="welcome-message">
+        <div class="welcome-content">
+          <div class="welcome-avatar">
+            <i class="fas fa-microphone-alt"></i>
+          </div>
+          <h2>Welcome to AI Voice Agent</h2>
+          <p>Start a conversation by clicking the microphone button below. I'll listen and respond in real-time!</p>
+        </div>
+      </div>
+    `;
+  }
+
+  // Override the existing initializeSession function to include session display update
+  const originalInitializeSession = initializeSession;
+  initializeSession = function() {
+    if (originalInitializeSession) {
+      originalInitializeSession();
+    }
+    updateSessionDisplay();
+  };
 });

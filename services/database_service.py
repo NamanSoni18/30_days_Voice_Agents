@@ -129,6 +129,84 @@ class DatabaseService:
             logger.info(f"💾 Message saved to in-memory storage for session {session_id}: {role} - {content[:50]}...")
             return True
     
+    async def get_all_sessions(self) -> List[Dict]:
+        """Get all chat sessions with metadata"""
+        sessions = []
+        
+        if self.db is not None:
+            try:
+                cursor = self.db.chat_sessions.find(
+                    {},
+                    {
+                        "session_id": 1,
+                        "created_at": 1,
+                        "last_activity": 1,
+                        "message_count": 1,
+                        "messages": {"$slice": 1}  # Get first message for preview
+                    }
+                ).sort("last_activity", -1)
+                
+                async for session in cursor:
+                    # Get first user message for preview
+                    preview_text = "New conversation"
+                    if session.get("messages") and len(session["messages"]) > 0:
+                        first_message = session["messages"][0]
+                        if first_message.get("role") == "user":
+                            preview_text = first_message.get("content", "")[:50]
+                        else:
+                            # If first message is not from user, look for first user message
+                            all_messages = await self.get_chat_history(session["session_id"])
+                            for msg in all_messages:
+                                if msg.get("role") == "user":
+                                    preview_text = msg.get("content", "")[:50]
+                                    break
+                    
+                    sessions.append({
+                        "session_id": session["session_id"],
+                        "created_at": session.get("created_at", datetime.now()),
+                        "last_activity": session.get("last_activity", datetime.now()),
+                        "message_count": session.get("message_count", 0),
+                        "preview": preview_text
+                    })
+                    
+            except Exception as e:
+                logger.error(f"Failed to get sessions from MongoDB: {str(e)}")
+                # Fallback to in-memory sessions
+                for session_id, session_data in self.user_sessions.items():
+                    messages = self.in_memory_store.get(session_id, [])
+                    preview_text = "New conversation"
+                    for msg in messages:
+                        if msg.get("role") == "user":
+                            preview_text = msg.get("content", "")[:50]
+                            break
+                    
+                    sessions.append({
+                        "session_id": session_id,
+                        "created_at": session_data.get("created_at", datetime.now()),
+                        "last_activity": session_data.get("last_activity", datetime.now()),
+                        "message_count": session_data.get("message_count", 0),
+                        "preview": preview_text
+                    })
+        else:
+            # In-memory storage
+            for session_id, session_data in self.user_sessions.items():
+                messages = self.in_memory_store.get(session_id, [])
+                preview_text = "New conversation"
+                for msg in messages:
+                    if msg.get("role") == "user":
+                        preview_text = msg.get("content", "")[:50]
+                        break
+                
+                sessions.append({
+                    "session_id": session_id,
+                    "created_at": session_data.get("created_at", datetime.now()),
+                    "last_activity": session_data.get("last_activity", datetime.now()),
+                    "message_count": session_data.get("message_count", 0),
+                    "preview": preview_text
+                })
+        
+        return sessions
+
     async def clear_session_history(self, session_id: str) -> bool:
         """Clear chat history for a specific session"""
         if self.db is not None:

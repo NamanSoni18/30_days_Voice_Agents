@@ -150,6 +150,26 @@ async def get_backend_status():
 
 
 
+@app.get("/api/sessions")
+async def get_all_sessions():
+    """Get all chat sessions"""
+    try:
+        sessions = await database_service.get_all_sessions()
+        return {
+            "success": True,
+            "sessions": sessions,
+            "total_count": len(sessions)
+        }
+    except Exception as e:
+        logger.error(f"Error getting all sessions: {str(e)}")
+        return {
+            "success": False,
+            "sessions": [],
+            "total_count": 0,
+            "error": str(e)
+        }
+
+
 @app.get("/agent/chat/{session_id}/history", response_model=ChatHistoryResponse)
 async def get_chat_history_endpoint(session_id: str = Path(..., description="Session ID")):
     """Get chat history for a session"""
