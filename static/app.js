@@ -1,50 +1,287 @@
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("Voice Agents App Loaded!");
-  let voiceQueryRecorder;
-  let voiceQueryChunks = [];
-  let voiceQueryStream;
-  let voiceQueryStartTime;
-  let voiceQueryTimerInterval;
-
-  // Session management
+  // Global variables
   let sessionId = getSessionIdFromUrl() || window.SESSION_ID || generateSessionId();
-  initializeSession();
-
-  // Voice query elements
-  const voiceQueryBtn = document.getElementById("voiceQueryBtn");
-  const voiceQueryStatus = document.getElementById("voiceQueryStatus");
-  const voiceQueryTimer = document.getElementById("voiceQueryTimer");
-  const voiceQueryMessageDisplay = document.getElementById("voiceQueryMessageDisplay");
-  const voiceQueryContainer = document.getElementById("voiceQueryContainer");
-  const voiceQueryTranscription = document.getElementById("voiceQueryTranscription");
-  const voiceQueryLLMResponse = document.getElementById("voiceQueryLLMResponse");
-  const voiceQueryAudioPlayer = document.getElementById("voiceQueryAudioPlayer");
-  const askAgainBtn = document.getElementById("askAgainBtn");
+  let currentAssistantText = ""; // For real-time chat history updates
+  let selectedPersona = "developer"; // Default persona
+  let currentStreamingMessage = null; // Track current streaming message in new UI
+  let isConnecting = false; // Track connection state
+  let isStreaming = false; // Track streaming state
+  
+  // DOM elements
   const toggleChatHistoryBtn = document.getElementById("toggleChatHistory");
   const chatHistoryContainer = document.getElementById("chatHistoryContainer");
+  const personaSelect = document.getElementById("personaSelect");
+  
+  // New UI elements
+  const chatMessages = document.getElementById("chatMessages");
+  const personaName = document.getElementById("personaName");
+  const personaAvatar = document.getElementById("personaAvatar");
+  const newChatBtn = document.getElementById("newChatBtn");
+  
+  // Modal elements
+  const conversationModal = document.getElementById("conversationModal");
+  const closeModalBtn = document.getElementById("closeModal");
+  const modalCloseBtn = document.getElementById("modalCloseBtn");
+  const modalQuestionContent = document.getElementById("modalQuestionContent");
+  const modalResponseContent = document.getElementById("modalResponseContent");
+  
+  // Audio streaming variables
+  let audioStreamSocket;
+  let audioStreamRecorder;
+  let audioStreamStream;
+  
+  // Audio playback variables
+  let audioContext = null;
+  let audioChunks = [];
+  let playheadTime = 0;
+  let isPlaying = false;
+  let wavHeaderSet = true;
+  const SAMPLE_RATE = 44100;
 
-  // Chat history management
+  const audioStreamBtn = document.getElementById("audioStreamBtn");
+  const audioStreamStatus = document.getElementById("audioStreamStatus");
+  const streamingStatusLog = document.getElementById("streamingStatusLog");
+  const connectionStatus = document.getElementById("connectionStatus");
+  const statusText = document.getElementById("statusText");
+  const streamingSessionId = document.getElementById("streamingSessionId");
+
+  // Initialize session
+  initializeSession();
+
+  // Event listeners for new UI
+  if (newChatBtn) {
+    newChatBtn.addEventListener("click", startNewChat);
+  }
+
+  // Event listeners
   if (toggleChatHistoryBtn) {
     toggleChatHistoryBtn.addEventListener("click", toggleChatHistory);
   }
 
-  // Session management functions
-  function getSessionIdFromUrl() {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('session_id');
+  // Persona selection event listener
+  if (personaSelect) {
+    personaSelect.addEventListener("change", function() {
+      selectedPersona = personaSelect.value;
+      updatePersonaDisplay();
+      
+      // Send persona update to WebSocket if connected
+      if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.OPEN) {
+        audioStreamSocket.send(JSON.stringify({
+          type: "persona_update",
+          persona: selectedPersona
+        }));
+      }
+      
+      // Update persona badge
+      const personaBadge = document.getElementById("currentPersona");
+      if (personaBadge) {
+        personaBadge.textContent = getPersonaDisplayName(selectedPersona).split(' ')[0];
+        personaBadge.setAttribute('data-persona', selectedPersona);
+      }
+    });
   }
 
+  // Modal event listeners
+  if (closeModalBtn) {
+    closeModalBtn.addEventListener("click", closeModal);
+  }
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener("click", closeModal);
+  }
+  
+  // Close modal when clicking outside
+  if (conversationModal) {
+    conversationModal.addEventListener("click", function(e) {
+      if (e.target === conversationModal) {
+        closeModal();
+      }
+    });
+  }
+  
+  // Close modal with Escape key
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape" && conversationModal && conversationModal.style.display !== "none") {
+      closeModal();
+    }
+  });
+
+  // Initialize streaming mode
+  initializeStreamingMode();
+
+  // New UI Functions
+  function updatePersonaDisplay() {
+    const displayName = getPersonaDisplayName(selectedPersona);
+    if (personaName) {
+      personaName.textContent = displayName.split(' ')[0]; // Show just the first part
+    }
+    
+    // Update avatar icon based on persona
+    if (personaAvatar) {
+      const icons = {
+        developer: "fas fa-code",
+        aizen: "fas fa-crown",
+        luffy: "fas fa-anchor",
+        politician: "fas fa-user-tie"
+      };
+      personaAvatar.innerHTML = `<i class="${icons[selectedPersona] || 'fas fa-robot'}"></i>`;
+    }
+    
+    document.title = `Voice Agent - ${displayName}`;
+  }
+
+  function addMessageToChat(content, isUser = false, isStreaming = false) {
+    if (!chatMessages) return;
+    
+    // Remove welcome message if it exists
+    const welcomeMessage = chatMessages.querySelector('.welcome-message');
+    if (welcomeMessage) {
+      welcomeMessage.remove();
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.className = 'message-avatar';
+    
+    if (isUser) {
+      avatarDiv.innerHTML = '<i class="fas fa-user"></i>';
+    } else {
+      const icons = {
+        developer: "fas fa-code",
+        aizen: "fas fa-crown", 
+        luffy: "fas fa-anchor",
+        politician: "fas fa-user-tie"
+      };
+      avatarDiv.innerHTML = `<i class="${icons[selectedPersona] || 'fas fa-robot'}"></i>`;
+    }
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    
+    if (isUser) {
+      contentDiv.textContent = content;
+    } else {
+      // For assistant messages, parse markdown
+      try {
+        if (typeof marked !== "undefined" && content) {
+          contentDiv.innerHTML = marked.parse(content);
+          // Apply syntax highlighting if available
+          if (typeof hljs !== "undefined") {
+            contentDiv.querySelectorAll('pre code').forEach((block) => {
+              hljs.highlightElement(block);
+            });
+          }
+        } else {
+          contentDiv.textContent = content;
+        }
+      } catch (error) {
+        console.warn('Markdown parsing error:', error);
+        contentDiv.textContent = content;
+      }
+    }
+    
+    if (isStreaming) {
+      contentDiv.classList.add('streaming');
+    }
+    
+    messageDiv.appendChild(avatarDiv);
+    messageDiv.appendChild(contentDiv);
+    
+    chatMessages.appendChild(messageDiv);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    return messageDiv;
+  }
+
+  function updateStreamingMessage(messageElement, content) {
+    if (!messageElement) return;
+    
+    const contentDiv = messageElement.querySelector('.message-content');
+    if (contentDiv) {
+      try {
+        if (typeof marked !== "undefined" && content) {
+          contentDiv.innerHTML = marked.parse(content);
+          // Apply syntax highlighting if available
+          if (typeof hljs !== "undefined") {
+            contentDiv.querySelectorAll('pre code').forEach((block) => {
+              hljs.highlightElement(block);
+            });
+          }
+        } else {
+          contentDiv.textContent = content;
+        }
+      } catch (error) {
+        console.warn('Markdown parsing error:', error);
+        contentDiv.textContent = content;
+      }
+    }
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function startNewChat() {
+    // Clear chat messages
+    if (chatMessages) {
+      chatMessages.innerHTML = `
+        <div class="welcome-message">
+          <div class="welcome-content">
+            <div class="welcome-avatar">
+              <i class="fas fa-microphone-alt"></i>
+            </div>
+            <h2>Welcome to AI Voice Agent</h2>
+            <p>Start a conversation by clicking the microphone button below. I'll listen and respond in real-time!</p>
+          </div>
+        </div>
+      `;
+    }
+    
+    // Generate new session
+    sessionId = generateSessionId();
+    updateUrlWithSessionId(sessionId);
+    
+    // Reset current assistant text
+    currentAssistantText = "";
+  }
+
+  function updateConnectionStatus(status, text) {
+    if (connectionStatus) {
+      connectionStatus.className = `status-dot ${status}`;
+    }
+    if (statusText) {
+      statusText.textContent = text;
+    }
+  }
+
+  function getSessionIdFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get("session_id");
+  }
+  
   function generateSessionId() {
-    return 'session_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    return (
+      "session_" + Math.random().toString(36).substr(2, 9) + "_" + Date.now()
+    );
+  }
+
+  function getPersonaDisplayName(persona) {
+    const personaNames = {
+      "developer": "Developer (Default)",
+      "aizen": "Sosuke Aizen (Bleach)",
+      "luffy": "Monkey D. Luffy (One Piece)",
+      "politician": "Politician"
+    };
+    return personaNames[persona] || personaNames["developer"];
   }
 
   function updateUrlWithSessionId(sessionId) {
     const url = new URL(window.location);
-    url.searchParams.set('session_id', sessionId);
-    window.history.replaceState({}, '', url);
-    
-    // Update session ID display
-    const sessionIdElement = document.getElementById('sessionId');
+    url.searchParams.set("session_id", sessionId);
+    window.history.replaceState({}, "", url);
+    const sessionIdElement = document.getElementById("sessionId");
     if (sessionIdElement) {
       sessionIdElement.textContent = sessionId;
     }
@@ -52,39 +289,69 @@ document.addEventListener("DOMContentLoaded", function () {
 
   async function initializeSession() {
     updateUrlWithSessionId(sessionId);
-    console.log(`Initializing session: ${sessionId}`);
-    
-    // Load existing chat history for this session
     await loadChatHistory();
+    
+    // Initialize persona display
+    updatePersonaDisplay();
+    
+    // Initialize persona badge
+    const personaBadge = document.getElementById("currentPersona");
+    if (personaBadge) {
+      personaBadge.textContent = getPersonaDisplayName(selectedPersona).split(' ')[0];
+      personaBadge.setAttribute('data-persona', selectedPersona);
+    }
+    
+    console.log("Session initialized:", sessionId);
+  }
+
+  function initializeStreamingMode() {
+    const audioStreamBtn = document.getElementById("audioStreamBtn");
+    if (audioStreamBtn) {
+      audioStreamBtn.addEventListener("click", function () {
+        const state = this.getAttribute("data-state");
+        
+        // Prevent clicks while connecting
+        if (isConnecting) {
+          console.log("Connection in progress, please wait...");
+          return;
+        }
+        
+        if (state === "ready") {
+          startAudioStreaming();
+        } else if (state === "recording") {
+          stopAudioStreaming();
+        }
+      });
+    }
+    
+    resetStreamingState();
   }
 
   async function loadChatHistory() {
     try {
       const response = await fetch(`/agent/chat/${sessionId}/history`);
       const data = await response.json();
-      
       if (data.success && data.messages.length > 0) {
-        console.log(`Loaded ${data.message_count} messages for session ${sessionId}`);
         displayChatHistory(data.messages);
-        
-        // Show notification that previous session was loaded
-        showVoiceQueryMessage(`Previous session loaded with ${data.message_count} messages. Click "Show Chat History" to view them.`, 'success');
-      } else {
-        console.log(`No previous messages found for session ${sessionId}`);
+        showMessage(
+          `Previous session loaded with ${data.message_count} messages. Click "Show Chat History" to view them.`,
+          "success"
+        );
       }
     } catch (error) {
-      console.error('Failed to load chat history:', error);
+      console.error("Failed to load chat history:", error);
     }
   }
 
   function displayChatHistory(messages) {
-    const chatHistoryList = document.getElementById('chatHistoryList');
+    const chatHistoryList = document.getElementById("chatHistoryList");
     if (!chatHistoryList) return;
 
-    chatHistoryList.innerHTML = '';
-    
+    chatHistoryList.innerHTML = "";
+
     if (messages.length === 0) {
-      chatHistoryList.innerHTML = '<p class="no-history">No previous messages in this session.</p>';
+      chatHistoryList.innerHTML =
+        '<p class="no-history">No previous messages in this session.</p>';
       return;
     }
 
@@ -93,678 +360,1126 @@ document.addEventListener("DOMContentLoaded", function () {
     for (let i = 0; i < messages.length; i += 2) {
       const userMsg = messages[i];
       const assistantMsg = messages[i + 1];
-      if (userMsg && assistantMsg && userMsg.role === 'user' && assistantMsg.role === 'assistant') {
-        conversations.push({
-          user: userMsg,
-          assistant: assistantMsg,
-          timestamp: userMsg.timestamp
-        });
+      if (
+        userMsg &&
+        userMsg.role === "user" &&
+        assistantMsg &&
+        assistantMsg.role === "assistant"
+      ) {
+        conversations.push({ user: userMsg, assistant: assistantMsg });
+      } else if (userMsg && userMsg.role === "user") {
+        // Handle case where user message doesn't have corresponding assistant message
+        conversations.push({ user: userMsg, assistant: null });
       }
-    }
-
-    if (conversations.length === 0) {
-      chatHistoryList.innerHTML = '<p class="no-history">No complete conversations found.</p>';
-      return;
     }
 
     conversations.forEach((conv, index) => {
-      const conversationDiv = document.createElement('div');
-      conversationDiv.className = 'conversation-card';
-      conversationDiv.style.cursor = 'pointer';
-      
-      // Simple timestamp formatting - display as received from backend
-      let timestamp;
-      try {
-        const dateObj = new Date(conv.timestamp);
-        // Simple format: Month Day, Year at Hour:Minute AM/PM
-        timestamp = dateObj.toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        });
-      } catch (error) {
-        console.error('Error parsing timestamp:', error);
-        timestamp = 'Just now';
-      }
-      
-      const userPreview = conv.user.content.length > 80 ? 
-        conv.user.content.substring(0, 80) + '...' : 
-        conv.user.content;
-      const assistantPreview = conv.assistant.content.length > 100 ? 
-        conv.assistant.content.substring(0, 100) + '...' : 
-        conv.assistant.content;
+      const conversationDiv = document.createElement("div");
+      conversationDiv.className = "conversation-pair";
 
-      conversationDiv.innerHTML = `
-        <div class="conversation-header">
-          <span class="conversation-number">Conversation ${conversations.length - index}</span>
-          <span class="conversation-time">${timestamp}</span>
+      // User message
+      const userDiv = document.createElement("div");
+      userDiv.className = "chat-message user";
+      userDiv.innerHTML = `
+        <div class="message-header">
+          <span class="message-role">👤 You</span>
+          <small class="message-time">${new Date(
+            conv.user.timestamp
+          ).toLocaleString()}</small>
         </div>
-        <div class="conversation-content">
-          <div class="user-preview">
-            <span class="role-label">👤 You:</span>
-            <span class="preview-text">${userPreview}</span>
-          </div>
-          <div class="assistant-preview">
-            <span class="role-label">🤖 AI:</span>
-            <span class="preview-text">${assistantPreview}</span>
-          </div>
-        </div>
+        <div class="message-content">${conv.user.content}</div>
       `;
+
+      // Assistant message
+      const assistantDiv = document.createElement("div");
+      assistantDiv.className = "chat-message assistant";
+      if (conv.assistant) {
+        // Parse markdown content if available
+        let assistantContent = conv.assistant.content;
+        try {
+          if (typeof marked !== "undefined") {
+            assistantContent = marked.parse(conv.assistant.content);
+          }
+        } catch (error) {
+          console.warn("Markdown parsing error:", error);
+        }
+
+        assistantDiv.innerHTML = `
+          <div class="message-header">
+            <span class="message-role">🤖 AI Assistant</span>
+            <small class="message-time">${new Date(
+              conv.assistant.timestamp
+            ).toLocaleString()}</small>
+          </div>
+          <div class="message-content">${assistantContent}</div>
+        `;
+      } else {
+        assistantDiv.innerHTML = `
+          <div class="message-header">
+            <span class="message-role">🤖 AI Assistant</span>
+            <small class="message-time">Pending...</small>
+          </div>
+          <div class="message-content"><em>Response pending...</em></div>
+        `;
+      }
+
+      conversationDiv.appendChild(userDiv);
+      conversationDiv.appendChild(assistantDiv);
       
-      // Add click event to display the conversation in the main area
+      // Add click event listener to open modal
       conversationDiv.addEventListener('click', function() {
-        displayConversationInMainArea(conv.user.content, conv.assistant.content);
-        
-        // Close the chat history
-        toggleChatHistory();
+        const userMessage = conv.user.content;
+        const assistantMessage = conv.assistant ? conv.assistant.content : 'No response available';
+        openConversationModal(userMessage, assistantMessage);
       });
       
       chatHistoryList.appendChild(conversationDiv);
     });
-  }
 
-  function displayConversationInMainArea(userQuestion, assistantResponse) {
-    // Show the voice query container
-    if (voiceQueryContainer) {
-      voiceQueryContainer.style.display = "block";
+    // Apply syntax highlighting to code blocks if available
+    if (typeof hljs !== "undefined") {
+      chatHistoryList.querySelectorAll("pre code").forEach((block) => {
+        hljs.highlightElement(block);
+      });
     }
-    
-    // Display the user question
-    if (voiceQueryTranscription) {
-      voiceQueryTranscription.innerHTML = userQuestion;
-    }
-    
-    // Display the AI response with markdown rendering
-    if (voiceQueryLLMResponse) {
-      try {
-        if (typeof marked !== 'undefined') {
-          marked.setOptions({
-            breaks: true,
-            gfm: true,
-            sanitize: false,
-            highlight: function(code, lang) {
-              if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
-                try {
-                  return hljs.highlight(code, { language: lang }).value;
-                } catch (err) {}
-              }
-              return code;
-            }
-          });
-          const markdownHtml = marked.parse(assistantResponse);
-          voiceQueryLLMResponse.innerHTML = markdownHtml;
-          
-          // Apply syntax highlighting
-          if (typeof hljs !== 'undefined') {
-            voiceQueryLLMResponse.querySelectorAll('pre code').forEach((block) => {
-              hljs.highlightElement(block);
-            });
-          }
-        } else {
-          voiceQueryLLMResponse.innerHTML = assistantResponse.replace(/\n/g, '<br>');
-        }
-      } catch (error) {
-        console.error('Markdown parsing error:', error);
-        voiceQueryLLMResponse.innerHTML = assistantResponse.replace(/\n/g, '<br>');
-      }
-    }
-    
-    // Clear audio player since this is from history (no audio available)
-    if (voiceQueryAudioPlayer) {
-      voiceQueryAudioPlayer.src = "";
-    }
-    
-    // Keep the audio section hidden for history items
-    const responseAudioSection = document.querySelector('.response-audio-section');
-    if (responseAudioSection) {
-      responseAudioSection.style.display = "none";
-    }
-    
-    // Scroll to the conversation area
-    voiceQueryContainer.scrollIntoView({ behavior: "smooth" });
-    
-    // Show success message
-    showVoiceQueryMessage('Previous conversation loaded successfully!', 'success');
   }
 
   function toggleChatHistory() {
-    const container = document.getElementById('chatHistoryContainer');
-    const button = document.getElementById('toggleChatHistory');
-    
-    if (container.style.display === 'none' || !container.style.display) {
-      container.style.display = 'block';
-      button.textContent = 'Hide Chat History';
-      loadChatHistory(); // Refresh the history
-    } else {
-      container.style.display = 'none';
-      button.textContent = 'Show Chat History';
-    }
-  }
+    if (chatHistoryContainer) {
+      const isVisible = chatHistoryContainer.style.display !== "none";
+      chatHistoryContainer.style.display = isVisible ? "none" : "block";
 
-  // Audio player event listeners for auto-recording
-  if (voiceQueryAudioPlayer) {
-    voiceQueryAudioPlayer.addEventListener('ended', function() {
-      console.log("Audio playback ended, starting auto-recording...");
-      setTimeout(() => {
-        if (!voiceQueryRecorder || voiceQueryRecorder.state !== "recording") {
-          updateVoiceQueryButton('ready');
-          startVoiceQuery();
-        }
-      }, 1000); // Wait 1 second before starting auto-recording
-    });
-  }
+      if (toggleChatHistoryBtn) {
+        toggleChatHistoryBtn.textContent = isVisible
+          ? "Show Chat History"
+          : "Hide Chat History";
+      }
 
-
-
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    if (voiceQueryBtn) {
-      showVoiceQueryMessage("Your browser doesn't support audio recording. Please use a modern browser like Chrome, Firefox, or Safari.", "error");
-      voiceQueryBtn.disabled = true;
-    }
-  } else {
-    if (voiceQueryBtn) {
-      voiceQueryBtn.addEventListener("click", toggleVoiceQuery);
-      
-      if (askAgainBtn) {
-        askAgainBtn.addEventListener("click", function() {
-          hideVoiceQuery();
-          resetVoiceQueryState();
-          // Don't auto-start recording when manually clicking "Ask Again"
-        });
+      if (!isVisible) {
+        // Reload chat history when showing
+        loadChatHistory();
       }
     }
   }
 
-  // Toggle function for the combined button
-  function toggleVoiceQuery() {
-    const currentState = voiceQueryBtn.getAttribute('data-state');
+  // Modal Functions
+  function openConversationModal(userMessage, assistantMessage) {
+    if (!conversationModal || !modalQuestionContent || !modalResponseContent) return;
     
-    if (currentState === 'ready' || currentState === 'completed') {
-      startVoiceQuery();
-    } else if (currentState === 'recording') {
-      stopVoiceQuery();
-    }
-  }
-
-  // Update button state and appearance
-  function updateVoiceQueryButton(state) {
-    if (!voiceQueryBtn) return;
+    // Set the content
+    modalQuestionContent.textContent = userMessage;
     
-    const btnIcon = voiceQueryBtn.querySelector('.btn-icon');
-    const btnText = voiceQueryBtn.querySelector('.btn-text');
-    
-    voiceQueryBtn.setAttribute('data-state', state);
-    
-    switch (state) {
-      case 'ready':
-        voiceQueryBtn.disabled = false;
-        voiceQueryBtn.className = 'btn primary';
-        btnIcon.textContent = '🎤';
-        btnText.textContent = 'Start Recording';
-        break;
-      case 'recording':
-        voiceQueryBtn.disabled = false;
-        voiceQueryBtn.className = 'btn secondary recording';
-        btnIcon.textContent = '⏹️';
-        btnText.textContent = 'Stop Recording';
-        break;
-      case 'processing':
-        voiceQueryBtn.disabled = true;
-        voiceQueryBtn.className = 'btn processing';
-        btnIcon.textContent = '⏳';
-        btnText.textContent = 'Processing...';
-        break;
-      case 'completed':
-        voiceQueryBtn.disabled = false;
-        voiceQueryBtn.className = 'btn primary';
-        btnIcon.textContent = '🎤';
-        btnText.textContent = 'Ask Another Question';
-        break;
-    }
-  }
-
-  function getSupportedMimeType() {
-    const mimeTypes = [
-      'audio/webm',
-    ];
-    
-    for (let mimeType of mimeTypes) {
-      if (MediaRecorder.isTypeSupported(mimeType)) {
-        return mimeType;
-      }
-    }
-    
-    return 'audio/webm';
-  }
-  async function startVoiceQuery() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showVoiceQueryMessage("Your browser doesn't support audio recording.", "error");
-      return;
-    }
-
+    // Parse assistant message as markdown
     try {
-      voiceQueryChunks = [];
-      voiceQueryStartTime = Date.now();
-      voiceQueryStream = await navigator.mediaDevices.getUserMedia({ 
+      if (typeof marked !== "undefined" && assistantMessage) {
+        const markdownHtml = marked.parse(assistantMessage);
+        modalResponseContent.innerHTML = markdownHtml;
+        
+        // Apply syntax highlighting if available
+        if (typeof hljs !== "undefined") {
+          modalResponseContent.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+          });
+        }
+      } else {
+        modalResponseContent.innerHTML = assistantMessage ? assistantMessage.replace(/\n/g, '<br>') : 'No response available';
+      }
+    } catch (error) {
+      console.warn('Markdown parsing error in modal:', error);
+      modalResponseContent.innerHTML = assistantMessage ? assistantMessage.replace(/\n/g, '<br>') : 'No response available';
+    }
+    
+    // Show the modal
+    conversationModal.style.display = "flex";
+    document.body.style.overflow = "hidden"; // Prevent background scrolling
+  }
+
+  function closeModal() {
+    if (conversationModal) {
+      conversationModal.style.display = "none";
+      document.body.style.overflow = ""; // Restore scrolling
+    }
+  }
+
+  function showMessage(message, type) {
+    // Simple console log for now - can be enhanced with UI notifications
+  }
+
+  // ==================== AUDIO STREAMING FUNCTIONALITY ====================
+
+  async function startAudioStreaming() {
+    try {
+      // Prevent multiple simultaneous connection attempts
+      if (isConnecting) {
+        console.log("Already connecting, please wait...");
+        return;
+      }
+      
+      isConnecting = true;
+      
+      // Show connecting state in button
+      if (audioStreamBtn) {
+        audioStreamBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        audioStreamBtn.className = "mic-button connecting";
+        audioStreamBtn.setAttribute("data-state", "connecting");
+        
+        const micStatus = audioStreamBtn.querySelector('.mic-status');
+        if (micStatus) {
+          micStatus.textContent = 'Connecting...';
+        } else {
+          audioStreamBtn.innerHTML += '<span class="mic-status">Connecting...</span>';
+        }
+      }
+      
+      // Reset streaming state and UI
+      resetStreamingState();
+      
+      updateConnectionStatus("connecting", "Connecting...");
+
+      // Clear any previous transcriptions
+      clearPreviousTranscriptions();
+
+      // Close any existing WebSocket connection
+      if (audioStreamSocket) {
+        audioStreamSocket.close();
+        audioStreamSocket = null;
+      }
+
+      // Connect to WebSocket with session ID and timeout
+      const wsUrl = `ws://localhost:8000/ws/audio-stream?session_id=${sessionId}`;
+      audioStreamSocket = new WebSocket(wsUrl);
+      
+      // Set a connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.CONNECTING) {
+          audioStreamSocket.close();
+          updateConnectionStatus("disconnected", "Connection timeout");
+          isConnecting = false;
+          console.error("WebSocket connection timeout");
+        }
+      }, 3000); // Reduced to 3 seconds for faster response
+
+      audioStreamSocket.onopen = function (event) {
+        clearTimeout(connectionTimeout);
+        isConnecting = false;
+        updateConnectionStatus("connected", "Connected");
+        console.log("WebSocket connected successfully");
+        
+        // Send session ID and persona to establish the session on the backend
+        audioStreamSocket.send(JSON.stringify({
+          type: "session_id",
+          session_id: sessionId,
+          persona: selectedPersona
+        }));
+      };
+
+      audioStreamSocket.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "audio_stream_ready") {
+          updateStreamingStatus(
+            `Ready to stream audio with transcription. Session: ${data.session_id}`,
+            "info"
+          );
+          streamingSessionId.textContent = `Session: ${data.session_id}`;
+          
+          // Ensure the frontend session ID matches the backend
+          if (data.session_id !== sessionId) {
+            sessionId = data.session_id;
+            updateUrlWithSessionId(sessionId);
+          }
+          
+          if (data.transcription_enabled) {
+            // Remove transcription enabled message as requested
+          }
+          startRecordingForStreaming();
+        } else if (data.type === "chunk_ack") {
+          // Removed excessive chunk acknowledgment logging
+        } else if (data.type === "command_response") {
+          updateStreamingStatus(data.message, "info");
+        } else if (data.type === "transcription_ready") {
+          updateStreamingStatus("🎯 " + data.message, "success");
+        } else if (data.type === "final_transcript") {
+          // Display final transcription only if we have text
+          if (data.text && data.text.trim()) {
+            updateStreamingStatus(`🎙️ FINAL: "${data.text}"`, "recording");
+          }
+        } else if (data.type === "partial_transcript") {
+          // Show partial transcripts for feedback
+          if (data.text && data.text.trim()) {
+            updateStreamingStatus(`🎙️ ${data.text}`, "info");
+          }
+        } else if (data.type === "turn_end") {
+          updateStreamingStatus("🛑 Turn ended - User stopped talking", "success");
+          if (data.final_transcript && data.final_transcript.trim()) {
+            updateStreamingStatus(`✅ TURN COMPLETE: "${data.final_transcript}"`, "success");
+          } else {
+            updateStreamingStatus("⚠️ Turn ended but no speech detected", "warning");
+            showNoSpeechMessage();
+          }
+        } else if (data.type === "transcription_complete") {
+          if (data.text && data.text.trim()) {
+            // Remove complete transcription message as requested
+          } else {
+            updateStreamingStatus("⚠️ No speech detected in recording", "warning");
+            showNoSpeechMessage();
+          }
+        } else if (data.type === "streaming_complete") {
+          updateStreamingStatus(`🎯 ${data.message}`, "success");
+          if (!data.transcription || !data.transcription.trim()) {
+            updateStreamingStatus("⚠️ Recording completed but no speech was detected", "warning");
+            showNoSpeechMessage();
+          }
+        } else if (data.type === "transcription_error") {
+          updateStreamingStatus("❌ Transcription error: " + data.message, "error");
+        } else if (data.type === "transcription_stopped") {
+          updateStreamingStatus("🛑 " + data.message, "warning");
+        } else if (data.type === "llm_streaming_start") {
+          updateStreamingStatus(`🤖 ${data.message}`, "info");
+          resetAudioPlayback();
+          displayLLMStreamingStart(data.user_message);
+          // Add user message to chat history immediately
+          addUserMessageToChatHistory(data.user_message);
+        } else if (data.type === "llm_streaming_chunk") {
+          // Display LLM text chunks as they arrive
+          displayLLMTextChunk(data.chunk, data.accumulated_length);
+          // Update the assistant response in chat history in real-time
+          updateAssistantResponseInChatHistory(data.chunk);
+        } else if (data.type === "tts_streaming_start") {
+          updateStreamingStatus(`🎵 ${data.message}`, "info");
+          displayTTSStreamingStart();
+        } else if (data.type === "tts_audio_chunk") {
+          // Handle audio base64 chunks from TTS
+          handleAudioChunk(data);
+        } else if (data.type === "tts_status") {
+          // Removed excessive TTS status logging
+        } else if (data.type === "llm_streaming_complete") {
+          updateStreamingStatus(`✅ ${data.message}`, "success");
+          displayStreamingComplete(data);
+          
+          // Reset streaming state to allow next query
+          isStreaming = false;
+          
+          // Ensure button is ready for next interaction
+          if (audioStreamBtn) {
+            audioStreamBtn.setAttribute("data-state", "ready");
+          }
+          
+          // Chat history is now updated in real-time when response is saved
+          // No need for delayed reload
+        } else if (data.type === "llm_streaming_error") {
+          updateStreamingStatus(`❌ ${data.message}`, "error");
+        } else if (data.type === "tts_streaming_error") {
+          updateStreamingStatus(`❌ ${data.message}`, "error");
+        } else if (data.type === "response_saved") {
+          updateStreamingStatus(`💾 ${data.message}`, "success");
+          // Response is already being updated in real-time, just mark as saved
+          markResponseAsSaved();
+          
+          // Reset streaming state after response is saved
+          isStreaming = false;
+        } else if (data.type === "persona_updated") {
+          updateStreamingStatus(`🎭 ${data.message}`, "success");
+          // Update the persona badge to reflect the change
+          const personaBadge = document.getElementById("currentPersona");
+          if (personaBadge) {
+            personaBadge.textContent = getPersonaDisplayName(data.persona).split(' ')[0];
+            personaBadge.setAttribute('data-persona', data.persona);
+          }
+        }
+      };
+
+      audioStreamSocket.onerror = function (error) {
+        clearTimeout(connectionTimeout);
+        isConnecting = false;
+        console.error("WebSocket error:", error);
+        updateConnectionStatus("error", "Connection Error");
+        
+        // Reset button state on error
+        if (audioStreamBtn) {
+          audioStreamBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+          audioStreamBtn.className = "mic-button";
+          audioStreamBtn.setAttribute("data-state", "ready");
+          
+          const micStatus = audioStreamBtn.querySelector('.mic-status');
+          if (micStatus) {
+            micStatus.textContent = 'Click to talk';
+          } else {
+            audioStreamBtn.innerHTML += '<span class="mic-status">Click to talk</span>';
+          }
+        }
+      };
+
+      audioStreamSocket.onclose = function (event) {
+        clearTimeout(connectionTimeout);
+        isConnecting = false;
+        updateConnectionStatus("disconnected", "Disconnected");
+        
+        // Only show close message if it wasn't intentional
+        if (event.code !== 1000) {
+          console.log("WebSocket closed unexpectedly:", event.code, event.reason);
+        }
+        
+        // Reset button state on close
+        if (audioStreamBtn) {
+          audioStreamBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+          audioStreamBtn.className = "mic-button";
+          audioStreamBtn.setAttribute("data-state", "ready");
+          
+          const micStatus = audioStreamBtn.querySelector('.mic-status');
+          if (micStatus) {
+            micStatus.textContent = 'Click to talk';
+          } else {
+            audioStreamBtn.innerHTML += '<span class="mic-status">Click to talk</span>';
+          }
+        }
+      };
+    } catch (error) {
+      isConnecting = false;
+      console.error("Error starting audio streaming:", error);
+      updateConnectionStatus("error", "Error");
+      updateStreamingStatus(
+        "Error starting streaming: " + error.message,
+        "error"
+      );
+    }
+  }
+
+  async function startRecordingForStreaming() {
+    try {
+      // Prevent starting if already streaming
+      if (isStreaming) {
+        console.log("Already streaming, ignoring start request");
+        return;
+      }
+      
+      audioStreamStream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          sampleRate: 16000,  // 16kHz for AssemblyAI
+          channelCount: 1,    // Mono
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
-        } 
+        },
       });
 
-      voiceQueryRecorder = new MediaRecorder(voiceQueryStream, {
-        mimeType: getSupportedMimeType()
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 16000
       });
-
-      voiceQueryRecorder.onstart = function() {
-        console.log("Voice query recording started");
-        voiceQueryStatus.style.display = "block";
-        updateVoiceQueryButton('recording');
-        hideVoiceQuery();
-        showVoiceQueryMessage("Recording your question! Speak clearly into your microphone.", "success");
-        
-        startVoiceQueryTimer();
-      };
-
-      voiceQueryRecorder.ondataavailable = function(event) {
-        if (event.data.size > 0) {
-          voiceQueryChunks.push(event.data);
-        }
-      };
-
-      voiceQueryRecorder.onstop = function() {
-        console.log("Voice query recording stopped");
-        const recordingDuration = Math.round((Date.now() - voiceQueryStartTime) / 1000);
-        
-        const audioBlob = new Blob(voiceQueryChunks, { type: getSupportedMimeType() });
-        processVoiceQuery(audioBlob);
-        
-        if (voiceQueryStream) {
-          voiceQueryStream.getTracks().forEach(track => track.stop());
-        }
-        
-        resetVoiceQueryState();
-      };
-
-      voiceQueryRecorder.onerror = function(event) {
-        console.error("Voice query recorder error:", event.error);
-        showVoiceQueryMessage("Recording failed. Please try again.", "error");
-        resetVoiceQueryState();
-      };
-
-      voiceQueryRecorder.start();
-
-    } catch (error) {
-      console.error("Error starting voice query:", error);
       
-      if (error.name === 'NotAllowedError') {
-        showVoiceQueryMessage("Microphone access denied. Please allow microphone access and try again.", "error");
-      } else if (error.name === 'NotFoundError') {
-        showVoiceQueryMessage("No microphone found. Please connect a microphone and try again.", "error");
-      } else if (error.name === 'NotSupportedError') {
-        showVoiceQueryMessage("Audio recording not supported in your browser.", "error");
-      } else {
-        showVoiceQueryMessage("Failed to start recording: " + error.message, "error");
+      const source = audioContext.createMediaStreamSource(audioStreamStream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      
+      processor.onaudioprocess = function(e) {
+        if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.OPEN) {
+          const inputData = e.inputBuffer.getChannelData(0);
+          const pcmData = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32767));
+          }
+          audioStreamSocket.send(pcmData.buffer);
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+      
+      // Store references for cleanup
+      audioStreamRecorder = {
+        stop: () => {
+          processor.disconnect();
+          source.disconnect();
+          audioContext.close();
+        }
+      };
+      
+      isStreaming = true;
+      if (audioStreamBtn) {
+        audioStreamBtn.innerHTML = '<i class="fas fa-stop"></i>';
+        audioStreamBtn.className = "mic-button recording";
+        audioStreamBtn.setAttribute("data-state", "recording");
+        
+        // Update mic status
+        const micStatus = audioStreamBtn.querySelector('.mic-status');
+        if (micStatus) {
+          micStatus.textContent = 'Recording...';
+        } else {
+          audioStreamBtn.innerHTML += '<span class="mic-status">Recording...</span>';
+        }
+      }
+
+      updateConnectionStatus("recording", "Recording & Streaming");
+      updateStreamingStatus("Recording and streaming audio...", "recording");
+      if (
+        audioStreamSocket &&
+        audioStreamSocket.readyState === WebSocket.OPEN
+      ) {
+        audioStreamSocket.send("start_streaming");
+      }
+    } catch (error) {
+      console.error("Error starting recording for streaming:", error);
+      updateConnectionStatus("error", "Recording Error");
+      updateStreamingStatus(
+        "Error starting recording: " + error.message,
+        "error"
+      );
+    }
+  }
+
+  async function stopAudioStreaming() {
+    try {
+      isStreaming = false; // Reset streaming state first
+      
+      // Stop the audio recording (either MediaRecorder or custom processor)
+      if (audioStreamRecorder) {
+        if (typeof audioStreamRecorder.stop === 'function') {
+          audioStreamRecorder.stop();
+        }
+        audioStreamRecorder = null;
+      }
+
+      // Stop media stream
+      if (audioStreamStream) {
+        audioStreamStream.getTracks().forEach((track) => track.stop());
+        audioStreamStream = null;
       }
       
-      resetVoiceQueryState();
+      // Send stop signal if WebSocket is open
+      if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.OPEN) {
+        audioStreamSocket.send("stop_streaming");
+        
+        // Close WebSocket immediately for faster response
+        audioStreamSocket.close(1000, "User stopped streaming");
+        audioStreamSocket = null;
+      }
+
+      // Update UI immediately
+      if (audioStreamBtn) {
+        audioStreamBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+        audioStreamBtn.className = "mic-button";
+        audioStreamBtn.setAttribute("data-state", "ready");
+        
+        // Update mic status
+        const micStatus = audioStreamBtn.querySelector('.mic-status');
+        if (micStatus) {
+          micStatus.textContent = 'Click to talk';
+        } else {
+          audioStreamBtn.innerHTML += '<span class="mic-status">Click to talk</span>';
+        }
+      }
+
+      updateConnectionStatus("disconnected", "Disconnected");
+      updateStreamingStatus("Audio streaming stopped", "info");
+    } catch (error) {
+      console.error("Error stopping audio streaming:", error);
+      updateStreamingStatus(
+        "Error stopping streaming: " + error.message,
+        "error"
+      );
     }
   }
 
-  function stopVoiceQuery() {
-    if (voiceQueryRecorder && voiceQueryRecorder.state === "recording") {
-      voiceQueryRecorder.stop();
-      stopVoiceQueryTimer();
-      showVoiceQueryMessage("Recording stopped! Preparing to process...", "loading");
-    } else {
-      console.log("No active voice query recording to stop");
-      resetVoiceQueryState();
+  function updateConnectionStatus(status, text) {
+    if (connectionStatus) {
+      connectionStatus.className = `status-badge ${status}`;
+      connectionStatus.textContent = text;
     }
   }
 
-  function startVoiceQueryTimer() {
-    if (voiceQueryTimer) {
-      let seconds = 0;
-      voiceQueryTimer.textContent = "0s";
+  function updateStreamingStatus(message, type) {
+    if (streamingStatusLog && audioStreamStatus) {
+      audioStreamStatus.style.display = "block";
+
+      const statusEntry = document.createElement("div");
+      statusEntry.className = `streaming-status ${type}`;
+      statusEntry.innerHTML = `
+        <strong>${new Date().toLocaleTimeString()}</strong>: ${message}
+      `;
+
+      streamingStatusLog.appendChild(statusEntry);
+      streamingStatusLog.scrollTop = streamingStatusLog.scrollHeight;
+    }
+  }
+
+  function resetStreamingState() {
+    // Reset connection flags
+    isConnecting = false;
+    
+    // Hide previous streaming UI elements
+    const elementsToHide = [
+      'llmStreamingArea',
+      'ttsStreamingArea', 
+      'streamingSummaryArea',
+      'noSpeechArea'
+    ];
+    
+    elementsToHide.forEach(elementId => {
+      const element = document.getElementById(elementId);
+      if (element) {
+        element.style.display = 'none';
+        if (elementId === 'llmStreamingArea') {
+          element.innerHTML = '';
+        }
+      }
+    });
+    
+    // Clear status log
+    if (streamingStatusLog) {
+      streamingStatusLog.innerHTML = '';
+    }
+    
+    // Hide status container
+    if (audioStreamStatus) {
+      audioStreamStatus.style.display = 'none';
+    }
+    
+    // Reset chat history state
+    currentAssistantText = "";
+    
+    resetAudioPlayback();
+  }
+
+  function clearPreviousTranscriptions() {
+    // Clear live transcription area
+    const liveArea = document.getElementById('liveTranscriptionArea');
+    if (liveArea) {
+      liveArea.style.display = 'none';
+      const transcriptionText = document.getElementById('transcriptionText');
+      if (transcriptionText) {
+        transcriptionText.innerHTML = '';
+      }
+    }
+    
+    // Clear complete transcription area
+    const completeArea = document.getElementById('completeTranscriptionArea');
+    if (completeArea) {
+      completeArea.style.display = 'none';
+    }
+    
+    // Clear no speech area
+    const noSpeechArea = document.getElementById('noSpeechArea');
+    if (noSpeechArea) {
+      noSpeechArea.style.display = 'none';
+    }
+    
+    // Clear LLM streaming area
+    const llmArea = document.getElementById('llmStreamingArea');
+    if (llmArea) {
+      llmArea.style.display = 'none';
+      llmArea.innerHTML = '';
+    }
+  }
+
+  function showNoSpeechMessage() {
+    // Speech detection happens in backend, UI display disabled
+  }
+
+  // Function to add user message to chat history immediately
+  function addUserMessageToChatHistory(userMessage) {
+    // Add to new chat interface
+    addMessageToChat(userMessage, true);
+    
+    // Create streaming assistant message in new UI
+    currentStreamingMessage = addMessageToChat("", false, true);
+    
+    // Reset current assistant text for new conversation
+    currentAssistantText = "";
+    
+    // Also add to legacy chat history for compatibility
+    const chatHistoryList = document.getElementById("chatHistoryList");
+    if (!chatHistoryList) return;
+
+    // Remove "no history" message if it exists
+    const noHistoryMsg = chatHistoryList.querySelector('.no-history');
+    if (noHistoryMsg) {
+      noHistoryMsg.remove();
+    }
+
+    // Create new conversation pair
+    const conversationDiv = document.createElement("div");
+    conversationDiv.className = "conversation-pair new-conversation";
+    conversationDiv.id = `conversation-${Date.now()}`;
+
+    const currentTime = new Date();
+
+    // User message
+    const userDiv = document.createElement("div");
+    userDiv.className = "chat-message user";
+    userDiv.innerHTML = `
+      <div class="message-header">
+        <span class="message-role">👤 You</span>
+        <small class="message-time">${currentTime.toLocaleString()}</small>
+      </div>
+      <div class="message-content">${userMessage}</div>
+    `;
+
+    // Assistant message placeholder
+    const assistantDiv = document.createElement("div");
+    assistantDiv.className = "chat-message assistant";
+    assistantDiv.id = "current-assistant-response";
+    assistantDiv.innerHTML = `
+      <div class="message-header">
+        <span class="message-role">🤖 AI Assistant</span>
+        <small class="message-time">${currentTime.toLocaleString()}</small>
+      </div>
+      <div class="message-content" id="assistant-content">
+        <em>Generating response...</em>
+      </div>
+    `;
+
+    conversationDiv.appendChild(userDiv);
+    conversationDiv.appendChild(assistantDiv);
+    chatHistoryList.appendChild(conversationDiv);
+
+    // Add click event listener to open modal
+    conversationDiv.addEventListener('click', function() {
+      const currentUserMessage = userMessage;
+      const assistantMessage = currentAssistantText || 'Response in progress...';
+      openConversationModal(currentUserMessage, assistantMessage);
+    });
+
+    // Scroll to new conversation
+    conversationDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Show notification that new conversation started
+    if (chatHistoryContainer && chatHistoryContainer.style.display === "none") {
+      if (toggleChatHistoryBtn) {
+        toggleChatHistoryBtn.textContent = "Show Chat History (New!)";
+        toggleChatHistoryBtn.style.backgroundColor = "#667eea";
+      }
+    }
+  }
+
+  // Function to update assistant response in real-time
+  function updateAssistantResponseInChatHistory(chunk) {
+    // Accumulate the response text
+    currentAssistantText += chunk;
+    
+    // Update new chat interface
+    if (currentStreamingMessage) {
+      updateStreamingMessage(currentStreamingMessage, currentAssistantText);
+    }
+    
+    // Update legacy chat history
+    const assistantContent = document.getElementById("assistant-content");
+    if (!assistantContent) return;
+
+    // Parse and display the markdown
+    try {
+      if (typeof marked !== "undefined") {
+        const markdownHtml = marked.parse(currentAssistantText);
+        assistantContent.innerHTML = markdownHtml;
+        
+        // Apply syntax highlighting if available
+        if (typeof hljs !== "undefined") {
+          assistantContent.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+          });
+        }
+      } else {
+        assistantContent.innerHTML = currentAssistantText.replace(/\n/g, '<br>');
+      }
+    } catch (error) {
+      console.warn('Markdown parsing error:', error);
+      assistantContent.innerHTML = currentAssistantText.replace(/\n/g, '<br>');
+    }
+
+    // Scroll to keep the conversation visible
+    const assistantDiv = document.getElementById("current-assistant-response");
+    if (assistantDiv) {
+      assistantDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  // Function to mark the response as saved
+  function markResponseAsSaved() {
+    // Mark streaming as complete in new UI
+    if (currentStreamingMessage) {
+      const contentDiv = currentStreamingMessage.querySelector('.message-content');
+      if (contentDiv) {
+        contentDiv.classList.remove('streaming');
+      }
+      currentStreamingMessage = null;
+    }
+    
+    // Update legacy interface
+    const assistantDiv = document.getElementById("current-assistant-response");
+    if (assistantDiv) {
+      // Remove the ID since this conversation is now complete
+      assistantDiv.removeAttribute('id');
+      const assistantContent = assistantDiv.querySelector('.message-content');
+      if (assistantContent) {
+        assistantContent.removeAttribute('id');
+      }
       
-      voiceQueryTimerInterval = setInterval(() => {
-        seconds++;
-        voiceQueryTimer.textContent = `${seconds}s`;
+      // Add a "saved" indicator
+      const messageHeader = assistantDiv.querySelector('.message-header');
+      if (messageHeader) {
+        const savedIndicator = document.createElement('span');
+        savedIndicator.className = 'saved-indicator';
+        savedIndicator.innerHTML = '💾';
+        savedIndicator.title = 'Response saved to database';
+        savedIndicator.style.marginLeft = '8px';
+        savedIndicator.style.fontSize = '12px';
+        messageHeader.appendChild(savedIndicator);
+      }
+    }
+
+    // Reset the accumulated text for next conversation
+    currentAssistantText = "";
+
+    // Update button text back to normal
+    if (toggleChatHistoryBtn && toggleChatHistoryBtn.textContent.includes("New!")) {
+      toggleChatHistoryBtn.textContent = "Show Chat History";
+      toggleChatHistoryBtn.style.backgroundColor = "";
+    }
+  }
+
+  function handleAudioChunk(audioData) {
+    // Play the audio chunk for streaming
+    playAudioChunk(audioData.audio_base64);
+    
+    // Remove the audio chunk received message as requested
+    
+    if (audioData.is_final) {
+      updateStreamingStatus("Audio streaming complete!", "success");
+      setTimeout(() => {
+        if (!isPlaying && audioChunks.length === 0) {
+          updatePlaybackStatus('Audio streaming complete!');
+          setTimeout(() => {
+            hideAudioPlaybackIndicator();
+          }, 2000);
+        }
       }, 1000);
     }
   }
 
-  function stopVoiceQueryTimer() {
-    if (voiceQueryTimerInterval) {
-      clearInterval(voiceQueryTimerInterval);
-      voiceQueryTimerInterval = null;
+  function displayLLMStreamingStart(userMessage) {
+    let llmArea = document.getElementById('llmStreamingArea');
+    
+    if (!llmArea) {
+      llmArea = document.createElement('div');
+      llmArea.id = 'llmStreamingArea';
+      llmArea.className = 'llm-streaming-area';
+      
+      // Insert after the complete transcription area or streaming status
+      const completeArea = document.getElementById('completeTranscriptionArea');
+      const statusContainer = document.getElementById('audioStreamStatus');
+      const insertAfter = completeArea || statusContainer;
+      
+      if (insertAfter) {
+        insertAfter.parentNode.insertBefore(llmArea, insertAfter.nextSibling);
+      }
+    }
+    
+    // Update content with current user message
+    llmArea.innerHTML = `
+      <h4>🤖 AI Response Generation</h4>
+      <div class="user-query">
+        <strong>Your question:</strong> "${userMessage}"
+      </div>
+      <div class="llm-response">
+        <strong>AI Response:</strong>
+        <div id="llmResponseText" class="llm-response-text"></div>
+      </div>
+    `;
+    
+    llmArea.style.display = 'block';
+    
+    // Clear previous response and show generating message
+    const responseText = document.getElementById('llmResponseText');
+    if (responseText) {
+      responseText.innerHTML = '<em>Generating response...</em>';
+      responseText.setAttribute('data-raw-text', '');
     }
   }
 
-  function resetVoiceQueryState() {
-    updateVoiceQueryButton('ready');
-    if (voiceQueryStatus) voiceQueryStatus.style.display = "none";
-    
-    stopVoiceQueryTimer();
-    
-    if (voiceQueryStream) {
-      voiceQueryStream.getTracks().forEach(track => track.stop());
-      voiceQueryStream = null;
-    }
-  }
-
-  async function processVoiceQuery(audioBlob) {
-    try {
-      updateVoiceQueryButton('processing');
-      showVoiceQueryProcessing();
-      
-      const formData = new FormData();
-      const filename = `voice_query_${Date.now()}.wav`;
-      formData.append('audio', audioBlob, filename);
-      updateProcessingStep('transcribing');
-    
-      setTimeout(() => updateProcessingStep('analyzing'), 1000);
-      setTimeout(() => updateProcessingStep('generating'), 2000);
-      setTimeout(() => updateProcessingStep('speech'), 3000);
-      
-      // Use the new chat endpoint with session ID with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
-      
-      const response = await fetch(`/agent/chat/${sessionId}`, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      const data = await response.json();
-      
-      if (response.ok && data.success) {
-        // Update to final step
-        updateProcessingStep('completed');
-        
-        // Small delay to show completion
-        setTimeout(() => {
-          hideVoiceQueryProcessing();
-          updateVoiceQueryButton('completed');
-          showVoiceQuery(data.transcription, data.llm_response, data.audio_url);
-          showVoiceQueryMessage('AI response generated successfully! Audio will auto-play and then start recording for your next question.', 'success');
-          
-          // Refresh chat history if it's currently visible
-          if (chatHistoryContainer && chatHistoryContainer.style.display === 'block') {
-            loadChatHistory();
-          }
-        }, 1000);
-      } else {
-        // Handle error responses with fallback audio
-        hideVoiceQueryProcessing();
-        updateVoiceQueryButton('ready');
-        
-        // Determine error type and show appropriate message
-        const errorType = data.error_type || 'general_error';
-        const errorMessage = data.message || 'An unexpected error occurred';
-        
-        console.error(`Voice query error (${errorType}):`, errorMessage);
-        
-        // Show error-specific messages to user
-        let userMessage = '';
-        switch (errorType) {
-          case 'api_keys_missing':
-            userMessage = '🔧 Configuration issue detected. Please contact support.';
-            break;
-          case 'file_error':
-            userMessage = '🎤 Audio file issue. Please try recording again.';
-            break;
-          case 'stt_error':
-            userMessage = '🎯 Having trouble understanding your audio. Please speak clearly and try again.';
-            break;
-          case 'no_speech':
-            userMessage = '🔇 No speech detected. Please speak clearly into your microphone.';
-            break;
-          case 'llm_error':
-            userMessage = '🤖 AI thinking process interrupted. Please try again in a moment.';
-            break;
-          case 'tts_error':
-            userMessage = '🔊 Voice generation issue. The text response is still available.';
-            break;
-          default:
-            userMessage = '⚠️ Connection issue. Please check your internet and try again.';
-        }
-        
-        showVoiceQueryMessage(userMessage, 'error');
-        
-        // If there's fallback audio or any response content, show it
-        if (data.audio_url || data.llm_response || data.transcription) {
-          setTimeout(() => {
-            showVoiceQuery(
-              data.transcription || '', 
-              data.llm_response || errorMessage, 
-              data.audio_url
-            );
-            
-            // Auto-play fallback audio if available
-            if (data.audio_url && voiceQueryAudioPlayer) {
-              setTimeout(() => {
-                voiceQueryAudioPlayer.play().catch(e => {
-                  console.log("Auto-play failed for fallback audio:", e);
-                });
-              }, 500);
-            }
-          }, 2000);
-        }
-        
-        // Auto-restart recording for certain error types after delay
-        if (['no_speech', 'stt_error', 'file_error'].includes(errorType)) {
-          setTimeout(() => {
-            if (!voiceQueryRecorder || voiceQueryRecorder.state !== "recording") {
-              console.log("Auto-restarting recording after error...");
-              updateVoiceQueryButton('ready');
-              startVoiceQuery();
-            }
-          }, 3000);
-        }
+  // Function to display LLM text chunks
+  function displayLLMTextChunk(chunk, accumulatedLength) {
+    const responseText = document.getElementById('llmResponseText');
+    if (responseText) {
+      // Append the new chunk
+      let currentText = responseText.getAttribute('data-raw-text') || '';
+      if (currentText === 'Generating response...') {
+        currentText = '';
       }
       
-    } catch (error) {
-      console.error('Voice query processing error:', error);
-      hideVoiceQueryProcessing();
-      updateVoiceQueryButton('ready');
+      // Accumulate the raw text
+      const newText = currentText + chunk;
+      responseText.setAttribute('data-raw-text', newText);
       
-      // Handle network errors
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        showVoiceQueryMessage('🌐 Network connection error. Please check your internet connection and try again.', 'error');
-      } else if (error.name === 'AbortError') {
-        showVoiceQueryMessage('⏱️ Request timed out. Please try again.', 'error');
-      } else {
-        showVoiceQueryMessage(`❌ Unexpected error: ${error.message}`, 'error');
-      }
-      
-      // Auto-restart recording after network errors
-      setTimeout(() => {
-        if (!voiceQueryRecorder || voiceQueryRecorder.state !== "recording") {
-          console.log("Auto-restarting recording after network error...");
-          updateVoiceQueryButton('ready');
-          startVoiceQuery();
-        }
-      }, 4000);
-    }
-  }
-
-  function showVoiceQuery(transcription, llmResponse, audioUrl) {
-    if (voiceQueryContainer && voiceQueryTranscription && voiceQueryLLMResponse && voiceQueryAudioPlayer) {
-      voiceQueryTranscription.innerHTML = transcription;
+      // Parse as Markdown and display
       try {
-
         if (typeof marked !== 'undefined') {
-          marked.setOptions({
-            breaks: true,
-            gfm: true,
-            sanitize: false,
-            highlight: function(code, lang) {
-              if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
-                try {
-                  return hljs.highlight(code, { language: lang }).value;
-                } catch (err) {}
-              }
-              return code;
-            }
-          });
-          const markdownHtml = marked.parse(llmResponse);
-          voiceQueryLLMResponse.innerHTML = markdownHtml;
+          const markdownHtml = marked.parse(newText);
+          responseText.innerHTML = markdownHtml;
+          
+          // Apply syntax highlighting if available
           if (typeof hljs !== 'undefined') {
-            voiceQueryLLMResponse.querySelectorAll('pre code').forEach((block) => {
+            responseText.querySelectorAll('pre code').forEach((block) => {
               hljs.highlightElement(block);
             });
           }
         } else {
-          voiceQueryLLMResponse.innerHTML = llmResponse.replace(/\n/g, '<br>');
+          // Fallback to simple line break replacement
+          responseText.innerHTML = newText.replace(/\n/g, '<br>');
         }
       } catch (error) {
-        console.error('Markdown parsing error:', error);
-        voiceQueryLLMResponse.innerHTML = llmResponse.replace(/\n/g, '<br>');
+        console.warn('Markdown parsing error:', error);
+        responseText.innerHTML = newText.replace(/\n/g, '<br>');
       }
       
-      // Keep audio section hidden for new responses (audio will auto-play)
-      const responseAudioSection = document.querySelector('.response-audio-section');
-      if (responseAudioSection) {
-        responseAudioSection.style.display = "none";
-      }
-      
-      voiceQueryAudioPlayer.src = audioUrl;
-      voiceQueryAudioPlayer.style.display = "none"; // Keep player hidden
-      voiceQueryContainer.style.display = "block";
-      voiceQueryContainer.scrollIntoView({ behavior: "smooth" });
-      setTimeout(() => {
-        voiceQueryAudioPlayer.play().catch(e => {
-          console.log("Auto-play failed (browser policy):", e);
-        });
-      }, 500);
+      // Scroll to bottom
+      responseText.scrollTop = responseText.scrollHeight;
     }
   }
 
-  function hideVoiceQuery() {
-    if (voiceQueryContainer) {
-      voiceQueryContainer.style.display = "none";
-    }
-    if (voiceQueryAudioPlayer && voiceQueryAudioPlayer.src) {
-      voiceQueryAudioPlayer.src = "";
-    }
-    if (voiceQueryTranscription) {
-      voiceQueryTranscription.innerHTML = "";
-    }
-    if (voiceQueryLLMResponse) {
-      voiceQueryLLMResponse.innerHTML = "";
-    }
-  }
-
-  function showVoiceQueryMessage(message, type) {
-    if (voiceQueryMessageDisplay) {
-      voiceQueryMessageDisplay.style.display = "flex";
-      
-      if (type === "loading") {
-        voiceQueryMessageDisplay.innerHTML = `
-          <div class="${type}-message">
-            <div class="loading-spinner"></div>
-            ${message}
-          </div>
-        `;
-      } else {
-        voiceQueryMessageDisplay.innerHTML = `
-          <div class="${type}-message">
-            ${message}
-          </div>
-        `;
-      }
-
-      // Auto-hide success and error messages after different durations
-      if (type === "success") {
-        setTimeout(() => {
-          voiceQueryMessageDisplay.innerHTML = "";
-          voiceQueryMessageDisplay.style.display = "none";
-        }, 5000);
-      } else if (type === "error") {
-        setTimeout(() => {
-          voiceQueryMessageDisplay.innerHTML = "";
-          voiceQueryMessageDisplay.style.display = "none";
-        }, 8000); // Show errors a bit longer
-      }
-    }
-  }
-
-  function showVoiceQueryProcessing() {
-    if (voiceQueryMessageDisplay) {
-      voiceQueryMessageDisplay.style.display = "flex";
-      voiceQueryMessageDisplay.innerHTML = `
-        <div class="processing-container">
-          <div class="processing-title">🤖 AI is processing your question...</div>
-          <div class="processing-steps">
-            <div class="processing-step active" id="step-transcribing">
-              <div class="step-icon loading"></div>
-              <span>Transcribing audio</span>
-            </div>
-            <div class="processing-step" id="step-analyzing">
-              <div class="step-icon"></div>
-              <span>Analyzing question</span>
-            </div>
-            <div class="processing-step" id="step-generating">
-              <div class="step-icon"></div>
-              <span>Generating response</span>
-            </div>
-            <div class="processing-step" id="step-speech">
-              <div class="step-icon"></div>
-              <span>Creating speech</span>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-  }
-
-  function updateProcessingStep(currentStep) {
-    const steps = {
-      'transcribing': ['step-transcribing'],
-      'analyzing': ['step-transcribing', 'step-analyzing'],
-      'generating': ['step-transcribing', 'step-analyzing', 'step-generating'],
-      'speech': ['step-transcribing', 'step-analyzing', 'step-generating', 'step-speech'],
-      'completed': ['step-transcribing', 'step-analyzing', 'step-generating', 'step-speech']
-    };
-
-    // Reset all steps
-    document.querySelectorAll('.processing-step').forEach(step => {
-      step.classList.remove('active', 'completed');
-      const icon = step.querySelector('.step-icon');
-      icon.classList.remove('loading', 'completed');
-    });
-
-    const activeSteps = steps[currentStep] || [];
+  function displayTTSStreamingStart() {
+    // Basic TTS streaming UI
+    let ttsArea = document.getElementById('ttsStreamingArea');
     
-    activeSteps.forEach((stepId, index) => {
-      const stepElement = document.getElementById(stepId);
-      const icon = stepElement?.querySelector('.step-icon');
+    if (!ttsArea) {
+      ttsArea = document.createElement('div');
+      ttsArea.id = 'ttsStreamingArea';
+      ttsArea.className = 'tts-streaming-area';
+      ttsArea.innerHTML = `<h4>🎵 Audio Generation</h4><div class="audio-status">Generating audio...</div>`;
       
-      if (index < activeSteps.length - 1 || currentStep === 'completed') {
-        // Completed steps
-        stepElement?.classList.add('completed');
-        icon?.classList.add('completed');
-      } else {
-        // Current active step
-        stepElement?.classList.add('active');
-        icon?.classList.add('loading');
+      const llmArea = document.getElementById('llmStreamingArea');
+      const statusContainer = document.getElementById('audioStreamStatus');
+      const insertAfter = llmArea || statusContainer;
+      
+      if (insertAfter) {
+        insertAfter.parentNode.insertBefore(ttsArea, insertAfter.nextSibling);
       }
-    });
+    }
+    
+    ttsArea.style.display = 'block';
   }
 
-  function hideVoiceQueryProcessing() {
-    if (voiceQueryMessageDisplay) {
-      voiceQueryMessageDisplay.innerHTML = "";
-      voiceQueryMessageDisplay.style.display = "none";
+  // Removed displayAudioChunkReceived function - not needed for basic functionality
+
+  function displayStreamingComplete(data) {
+    let summaryArea = document.getElementById('streamingSummaryArea');
+    
+    if (!summaryArea) {
+      summaryArea = document.createElement('div');
+      summaryArea.id = 'streamingSummaryArea';
+      summaryArea.className = 'streaming-summary-area';
+      
+      const ttsArea = document.getElementById('ttsStreamingArea');
+      const statusContainer = document.getElementById('audioStreamStatus');
+      const insertAfter = ttsArea || statusContainer;
+      
+      if (insertAfter) {
+        insertAfter.parentNode.insertBefore(summaryArea, insertAfter.nextSibling);
+      }
+    }
+    
+    summaryArea.innerHTML = `
+      <h4>✅ Conversation Complete</h4>
+      <div class="streaming-summary">
+        <div class="summary-item">
+          <strong>Complete Response:</strong>
+          <div class="final-response" id="finalResponseContent"></div>
+        </div>
+      </div>
+    `;
+    
+    summaryArea.style.display = 'block';
+    
+    // Render final response as Markdown
+    const finalResponseElement = document.getElementById('finalResponseContent');
+    if (finalResponseElement && data.complete_response) {
+      try {
+        if (typeof marked !== 'undefined') {
+          const markdownHtml = marked.parse(data.complete_response);
+          finalResponseElement.innerHTML = markdownHtml;
+          
+          if (typeof hljs !== 'undefined') {
+            finalResponseElement.querySelectorAll('pre code').forEach((block) => {
+              hljs.highlightElement(block);
+            });
+          }
+        } else {
+          finalResponseElement.innerHTML = data.complete_response.replace(/\n/g, '<br>');
+        }
+      } catch (error) {
+        console.warn('Markdown parsing error in final response:', error);
+        finalResponseElement.innerHTML = data.complete_response.replace(/\n/g, '<br>');
+      }
+    }
+    
+    summaryArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Removed displayAudioStreamingComplete function - not needed
+
+  // ==================== AUDIO STREAMING PLAYBACK FUNCTIONS ====================
+  // Based on Murf's WebSocket streaming reference implementation
+  
+  function initializeAudioContext() {
+    try {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        playheadTime = audioContext.currentTime;
+      }
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize audio context:', error);
+      return false;
     }
   }
 
+  function base64ToPCMFloat32(base64) {
+    try {
+      let binary = atob(base64);
+      const offset = wavHeaderSet ? 44 : 0; // Skip WAV header if present
+      
+      if (wavHeaderSet) {
+        wavHeaderSet = false; // Only process header once
+      }
+      
+      const length = binary.length - offset;
+      const buffer = new ArrayBuffer(length);
+      const byteArray = new Uint8Array(buffer);
+      
+      for (let i = 0; i < byteArray.length; i++) {
+        byteArray[i] = binary.charCodeAt(i + offset);
+      }
+
+      const view = new DataView(byteArray.buffer);
+      const sampleCount = byteArray.length / 2; // 16-bit samples
+      const float32Array = new Float32Array(sampleCount);
+
+      for (let i = 0; i < sampleCount; i++) {
+        const int16 = view.getInt16(i * 2, true); // Little endian
+        float32Array[i] = int16 / 32768; // Convert to float32 range [-1, 1]
+      }
+
+      return float32Array;
+    } catch (error) {
+      console.error('Error converting base64 to PCM:', error);
+      return null;
+    }
+  }
+
+  function chunkPlay() {
+    if (audioChunks.length > 0) {
+      const chunk = audioChunks.shift();
+      
+      if (audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+      
+      try {
+        const buffer = audioContext.createBuffer(1, chunk.length, SAMPLE_RATE);
+        buffer.copyToChannel(chunk, 0);
+        
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.destination);
+        
+        const now = audioContext.currentTime;
+        if (playheadTime < now) {
+          playheadTime = now + 0.05; // Add small delay to prevent audio gaps
+        }
+        
+        source.start(playheadTime);
+        playheadTime += buffer.duration;
+        
+        updatePlaybackStatus(`Playing audio chunk`);
+        
+        // Continue playing remaining chunks
+        if (audioChunks.length > 0) {
+          chunkPlay();
+        } else {
+          isPlaying = false;
+          updatePlaybackStatus('Audio streaming paused - waiting for more chunks...');
+        }
+      } catch (error) {
+        console.error('Error playing audio chunk:', error);
+        isPlaying = false;
+        hideAudioPlaybackIndicator();
+      }
+    }
+  }
+
+  function playAudioChunk(base64Audio) {
+    try {
+      // Initialize audio context if not already done
+      if (!initializeAudioContext()) {
+        return;
+      }
+
+      // Show audio playback indicator
+      showAudioPlaybackIndicator();
+
+      // Convert base64 to PCM data
+      const float32Array = base64ToPCMFloat32(base64Audio);
+      if (!float32Array || float32Array.length === 0) {
+        return;
+      }
+      
+      // Add chunk to playback queue
+      audioChunks.push(float32Array);
+
+      // Start playback if not already playing
+      if (!isPlaying && (playheadTime <= audioContext.currentTime + 0.1 || audioChunks.length >= 2)) {
+        isPlaying = true;
+        audioContext.resume().then(() => {
+          chunkPlay();
+        });
+      }
+    } catch (error) {
+      console.error('Error in playAudioChunk:', error);
+    }
+  }
+
+  function resetAudioPlayback() {
+    audioChunks = [];
+    isPlaying = false;
+    wavHeaderSet = true;
+    
+    if (audioContext) {
+      playheadTime = audioContext.currentTime;
+    }
+    
+    hideAudioPlaybackIndicator();
+  }
+
+  /**
+   * Show the audio playback indicator with animation
+   */
+  function showAudioPlaybackIndicator() {
+    const playbackContainer = document.getElementById('audioPlaybackStatus');
+    if (playbackContainer) {
+      playbackContainer.style.display = 'block';
+      
+      // Update status text
+      const statusText = document.getElementById('playbackStatusText');
+      if (statusText) {
+        statusText.textContent = 'Audio is streaming and playing...';
+      }
+    }
+  }
+
+  /**
+   * Hide the audio playback indicator
+   */
+  function hideAudioPlaybackIndicator() {
+    const playbackContainer = document.getElementById('audioPlaybackStatus');
+    if (playbackContainer) {
+      playbackContainer.style.display = 'none';
+    }
+  }
+
+  /**
+   * Update playback status text
+   */
+  function updatePlaybackStatus(text) {
+    const statusText = document.getElementById('playbackStatusText');
+    if (statusText) {
+      statusText.textContent = text;
+    }
+  }
 });

@@ -3,86 +3,165 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>30 Days of Voice Agents - FastAPI</title>
+    <title>AI Voice Agent - Chat</title>
     <link rel="stylesheet" href="/static/style.css" />
     <!-- Marked.js for Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Highlight.js for code syntax highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
   </head>
   <body>
-    <div class="container">
-      <header>
-        <h1>Murf AI Voice Agents</h1>
-      </header>
-
-      
-
-      <main class="voice-agent-section">
-        <div class="card">
-          <h1>AI Voice Agent</h1>
-          <p>Ask me anything! Record your question and I'll respond with voice. Chat history is maintained across the session.</p>
-          
-          <div class="session-info">
-            <small>Session ID: <span id="sessionId">{{ session_id }}</span></small>
-            <div class="chat-history-toggle">
-              <button id="toggleChatHistory" class="btn-toggle">Show Chat History</button>
+    <div class="chat-app">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <div class="app-title">
+            <i class="fas fa-microphone-alt"></i>
+            <span>Voice Agent</span>
+          </div>
+          <button id="newChatBtn" class="new-chat-btn">
+            <i class="fas fa-plus"></i>
+            New chat
+          </button>
+        </div>
+        
+        <div class="chat-history">
+          <div class="history-section">
+            <h3>Today</h3>
+            <div id="todayChats" class="chat-list">
+              <!-- Today's chats will be populated here -->
             </div>
           </div>
           
-          <div id="chatHistoryContainer" class="chat-history-container" style="display: none;">
-            <h4>Previous Messages in this Session:</h4>
-            <div id="chatHistoryList" class="chat-history-list">
-              <!-- Chat history will be populated here -->
+          <div class="history-section">
+            <h3>Previous 7 days</h3>
+            <div id="weekChats" class="chat-list">
+              <!-- Week's chats will be populated here -->
             </div>
           </div>
           
-          <div class="controls">
-            <button id="voiceQueryBtn" class="btn primary" data-state="ready">
-              <span class="btn-icon">🎤</span>
-              <span class="btn-text">Start Recording</span>
-            </button>
-          </div>
-
-          <div id="voiceQueryStatus" class="recording-status" style="display: none;">
-            <div class="recording-indicator">
-              <div class="pulse"></div>
-              <span>Recording your question...</span>
-              <span id="voiceQueryTimer" class="recording-timer">0s</span>
-            </div>
-          </div>
-
-          <div id="voiceQueryMessageDisplay" class="message-display"></div>
-          
-          <div id="voiceQueryContainer" class="voice-query-container" style="display: none;">
-            <div class="query-results">
-              <div class="transcription-section">
-                <h4>Your Question:</h4>
-                <div id="voiceQueryTranscription" class="transcription-text"></div>
-              </div>
-              
-              <div class="llm-response-section">
-                <h4>AI Response:</h4>
-                <div id="voiceQueryLLMResponse" class="llm-response-text"></div>
-              </div>
-              
-              <div class="response-audio-section" style="display: none;">
-                <h4>Listen to Response:</h4>
-                <audio id="voiceQueryAudioPlayer" controls style="display: none;">
-                  Your browser does not support the audio element.
-                </audio>
-              </div>
-              
-              <div class="voice-query-actions">
-                <button id="askAgainBtn" class="btn primary">Ask Another Question</button>
-              </div>
+          <div class="history-section">
+            <h3>Previous 30 days</h3>
+            <div id="monthChats" class="chat-list">
+              <!-- Month's chats will be populated here -->
             </div>
           </div>
         </div>
-      </main>
+        
+        <div class="sidebar-footer">
+          <div class="session-info">
+            <small>Session: <span id="sessionId">{{ session_id }}</span></small>
+          </div>
+        </div>
+      </div>
 
+      <!-- Main Chat Area -->
+      <div class="main-chat">
+        <!-- Chat Header -->
+        <div class="chat-header">
+          <div class="persona-info">
+            <div class="persona-avatar" id="personaAvatar">
+              <i class="fas fa-robot"></i>
+            </div>
+            <div class="persona-details">
+              <h2 id="personaName">Developer</h2>
+              <div class="persona-status">
+                <span id="connectionStatus" class="status-dot disconnected"></span>
+                <span id="statusText">Disconnected</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="chat-controls">
+            <div class="persona-selector">
+              <select id="personaSelect" class="persona-dropdown">
+                <option value="developer">Developer (Default)</option>
+                <option value="aizen">Sosuke Aizen (Bleach)</option>
+                <option value="luffy">Monkey D. Luffy (One Piece)</option>
+                <option value="politician">Politician</option>
+              </select>
+            </div>
+          </div>
+        </div>
 
+        <!-- Chat Messages -->
+        <div class="chat-messages" id="chatMessages">
+          <div class="welcome-message">
+            <div class="welcome-content">
+              <div class="welcome-avatar">
+                <i class="fas fa-microphone-alt"></i>
+              </div>
+              <h2>Welcome to AI Voice Agent</h2>
+              <p>Start a conversation by clicking the microphone button below. I'll listen and respond in real-time!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="chat-input-container">
+          <div class="input-wrapper">
+            <button id="audioStreamBtn" class="mic-button" data-state="ready">
+              <i class="fas fa-microphone"></i>
+              <span class="mic-status">Click to talk</span>
+            </button>
+          </div>
+          
+          <div id="audioPlaybackStatus" class="audio-playback-indicator" style="display: none;">
+            <div class="playback-animation">
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+              <div class="wave-bar"></div>
+            </div>
+            <span>AI is speaking...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden elements for maintaining functionality -->
+    <div style="display: none;">
+      <div id="chatHistoryContainer" class="chat-history-container">
+        <div id="chatHistoryList" class="chat-history-list">
+          <!-- Chat history will be populated here -->
+        </div>
+      </div>
+      
+      <div id="audioStreamStatus" class="streaming-status-container">
+        <div id="streamingStatusLog" class="status-log"></div>
+      </div>
+      
+      <span id="currentPersona" class="persona-badge">Developer</span>
+      <small id="streamingSessionId" class="streaming-session"></small>
+    </div>
+
+    <!-- Conversation Detail Modal -->
+    <div id="conversationModal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Conversation Details</h3>
+          <button id="closeModal" class="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-conversation">
+            <div class="modal-question">
+              <h4>👤 Your Question:</h4>
+              <div id="modalQuestionContent" class="modal-message-content"></div>
+            </div>
+            <div class="modal-response">
+              <h4>🤖 AI Response:</h4>
+              <div id="modalResponseContent" class="modal-message-content"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="modalCloseBtn" class="btn secondary">Close</button>
+        </div>
+      </div>
     </div>
 
     <script>
