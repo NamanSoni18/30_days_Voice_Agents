@@ -15,7 +15,9 @@ from models.schemas import (
     ChatHistoryResponse, 
     BackendStatusResponse,
     APIKeyConfig,
-    ErrorType
+    ErrorType,
+    WebSearchResponse,
+    WebSearchResult
 )
 from services.stt_service import STTService
 from services.llm_service import LLMService
@@ -23,6 +25,7 @@ from services.tts_service import TTSService
 from services.database_service import DatabaseService
 from services.assemblyai_streaming_service import AssemblyAIStreamingService
 from services.murf_websocket_service import MurfWebSocketService
+from services.web_search_service import WebSearchService
 from utils.logging_config import setup_logging, get_logger
 from utils.constants import get_fallback_message
 
@@ -47,6 +50,7 @@ tts_service: TTSService = None
 database_service: DatabaseService = None
 assemblyai_streaming_service: AssemblyAIStreamingService = None
 murf_websocket_service: MurfWebSocketService = None
+web_search_service: WebSearchService = None
 
 
 def initialize_services() -> APIKeyConfig:
@@ -56,10 +60,11 @@ def initialize_services() -> APIKeyConfig:
         assemblyai_api_key=os.getenv("ASSEMBLYAI_API_KEY"),
         murf_api_key=os.getenv("MURF_API_KEY"),
         murf_voice_id=os.getenv("MURF_VOICE_ID", "en-IN-aarav"),
-        mongodb_url=os.getenv("MONGODB_URL")
+        mongodb_url=os.getenv("MONGODB_URL"),
+        tavily_api_key=os.getenv("TAVILY_API_KEY")
     )
     
-    global stt_service, llm_service, tts_service, database_service, assemblyai_streaming_service, murf_websocket_service
+    global stt_service, llm_service, tts_service, database_service, assemblyai_streaming_service, murf_websocket_service, web_search_service
     if config.are_keys_valid:
         stt_service = STTService(config.assemblyai_api_key)
         llm_service = LLMService(config.gemini_api_key)
@@ -70,6 +75,17 @@ def initialize_services() -> APIKeyConfig:
     else:
         missing_keys = config.validate_keys()
         logger.error(f"❌ Missing API keys: {missing_keys}")
+    
+    # Initialize web search service if Tavily API key is available
+    if config.tavily_api_key:
+        try:
+            web_search_service = WebSearchService(config.tavily_api_key)
+            logger.info("✅ Web search service initialized successfully")
+        except Exception as e:
+            logger.warning(f"⚠️ Web search service initialization failed: {e}")
+    else:
+        logger.warning("⚠️ Tavily API key not found - web search feature will be disabled")
+    
     database_service = DatabaseService(config.mongodb_url)
     
     return config
@@ -140,7 +156,8 @@ async def get_backend_status():
                 "database_connected": db_connected,
                 "database_test": db_test_result,
                 "assemblyai_streaming": assemblyai_streaming_service is not None,
-                "murf_websocket": murf_websocket_service is not None
+                "murf_websocket": murf_websocket_service is not None,
+                "web_search": web_search_service is not None and web_search_service.is_configured()
             },
             timestamp=datetime.now().isoformat()
         )
@@ -205,6 +222,58 @@ async def clear_session_history(session_id: str = Path(..., description="Session
     except Exception as e:
         logger.error(f"Error clearing session history for {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/web-search", response_model=WebSearchResponse)
+async def search_web_endpoint(request: Request):
+    """Search the web using Tavily API"""
+    try:
+        body = await request.json()
+        query = body.get("query", "")
+        
+        if not query.strip():
+            return WebSearchResponse(
+                success=False,
+                query=query,
+                results=[],
+                error_message="Search query cannot be empty"
+            )
+        
+        if not web_search_service or not web_search_service.is_configured():
+            return WebSearchResponse(
+                success=False,
+                query=query,
+                results=[],
+                error_message="Web search service is not available. Please check Tavily API key."
+            )
+        
+        # Perform web search
+        search_results = await web_search_service.search_web(query, max_results=3)
+        
+        # Convert to response format
+        web_results = [
+            WebSearchResult(
+                title=result["title"],
+                snippet=result["snippet"],
+                url=result["url"]
+            )
+            for result in search_results
+        ]
+        
+        return WebSearchResponse(
+            success=True,
+            query=query,
+            results=web_results
+        )
+        
+    except Exception as e:
+        logger.error(f"Web search error: {str(e)}")
+        return WebSearchResponse(
+            success=False,
+            query=body.get("query", "") if 'body' in locals() else "",
+            results=[],
+            error_message=str(e)
+        )
 
 
 # @app.post("/agent/chat/{session_id}", response_model=VoiceChatResponse)
@@ -336,7 +405,9 @@ class ConnectionManager:
                 await websocket.send_text(message)
             except Exception as e:
                 logger.error(f"Error sending personal message: {e}")
-                self.disconnect(websocket)
+                # Remove from active connections immediately on send error
+                if websocket in self.active_connections:
+                    self.active_connections.remove(websocket)
         else:
             logger.debug("Attempted to send message to disconnected WebSocket")
 
@@ -357,12 +428,14 @@ session_locks = {}
 session_processing = {}
 # Track if persona changed during processing to allow force processing
 session_persona_changed = {}
+# Track web search enabled status per session
+session_web_search = {}
 
 # Global function to handle LLM streaming (moved outside WebSocket handler to prevent duplicates)
-async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket, persona: str = "developer", force_processing: bool = False):
+async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket, persona: str = "developer", force_processing: bool = False, web_search_enabled: bool = False):
     """Handle LLM streaming response and send to Murf WebSocket for TTS"""
     
-    logger.info(f"🎯 Starting LLM streaming for session {session_id}: '{user_message}' with persona: {persona}")
+    logger.info(f"🎯 Starting LLM streaming for session {session_id}: '{user_message}' with persona: {persona}, web_search: {web_search_enabled}")
     
     # Check if we're already generating LLM response for this session
     if session_id not in session_locks:
@@ -401,6 +474,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
     accumulated_response = ""
     audio_chunk_count = 0
     total_audio_size = 0
+    web_search_results = None
     
     try:
         # Get chat history
@@ -415,11 +489,60 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
             logger.error(f"Chat history error: {str(e)}")
             chat_history = []
         
+        # Initialize web search results
+        web_search_results = None
+        
+        # Perform web search if enabled
+        if web_search_enabled and web_search_service and web_search_service.is_configured():
+            try:
+                logger.info(f"🔍 Performing web search for: '{user_message}'")
+                
+                # Send web search status to client
+                search_status_message = {
+                    "type": "web_search_start",
+                    "message": f"Searching the web for: {user_message}",
+                    "query": user_message,
+                    "timestamp": datetime.now().isoformat()
+                }
+                await manager.send_personal_message(json.dumps(search_status_message), websocket)
+                
+                search_results = await web_search_service.search_web(user_message, max_results=3)
+                
+                if search_results:
+                    web_search_results = web_search_service.format_search_results_for_llm(search_results)
+                    logger.info(f"✅ Web search completed, found {len(search_results)} results")
+                    
+                    # Send web search results to client
+                    search_complete_message = {
+                        "type": "web_search_complete",
+                        "message": f"Found {len(search_results)} web results",
+                        "results": search_results,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    await manager.send_personal_message(json.dumps(search_complete_message), websocket)
+                else:
+                    logger.warning(f"⚠️ No web search results found for: '{user_message}'")
+                    web_search_results = None
+                    
+            except Exception as e:
+                logger.error(f"❌ Web search error: {str(e)}")
+                web_search_results = None
+                search_error_message = {
+                    "type": "web_search_error",
+                    "message": f"Web search failed: {str(e)}",
+                    "timestamp": datetime.now().isoformat()
+                }
+                await manager.send_personal_message(json.dumps(search_error_message), websocket)
+        else:
+            logger.info(f"🔍 Web search disabled or not configured for this query")
+            web_search_results = None
+        
         # Send LLM streaming start notification
         start_message = {
             "type": "llm_streaming_start",
             "message": "LLM is generating response...",
             "user_message": user_message,
+            "web_search_enabled": web_search_enabled,
             "timestamp": datetime.now().isoformat()
         }
         await manager.send_personal_message(json.dumps(start_message), websocket)
@@ -434,7 +557,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                 chunk_count = 0
                 
                 # Stream LLM response and collect chunks
-                async for chunk in llm_service.generate_streaming_response(user_message, chat_history, persona):
+                async for chunk in llm_service.generate_streaming_response(user_message, chat_history, persona, web_search_results):
                     if chunk:
                         chunk_count += 1
                         accumulated_response += chunk
@@ -698,7 +821,11 @@ async def audio_stream_websocket(websocket: WebSocket):
                         last_processed_transcript = final_text
                         last_processing_time = current_time
                         last_processed_persona = current_persona  # Save the persona
-                        await handle_llm_streaming(final_text, session_id, websocket, current_persona)
+                        
+                        # Get web search enabled status from frontend (if available)
+                        web_search_enabled = session_web_search.get(session_id, False)
+                        
+                        await handle_llm_streaming(final_text, session_id, websocket, current_persona, web_search_enabled=web_search_enabled)
                     else:
                         logger.info(f"Skipping transcript: '{final_text}' - duplicate: {is_duplicate}, persona_changed: {persona_changed}, time_since_last: {time_since_last:.1f}s")
                         
@@ -759,6 +886,13 @@ async def audio_stream_websocket(websocket: WebSocket):
                                     if new_persona and new_persona != current_persona:
                                         logger.info(f"Updating persona from {current_persona} to {new_persona}")
                                         current_persona = new_persona
+                                    
+                                    # Update web search state if provided from frontend
+                                    web_search_state = command_data.get("web_search_enabled")
+                                    if web_search_state is not None:
+                                        session_web_search[session_id] = web_search_state
+                                        logger.info(f"🔍 Initial web search state set to: {web_search_state} for session {session_id}")
+                                    
                                     continue
                                 
                                 elif command_type == "persona_update":
@@ -776,6 +910,38 @@ async def audio_stream_websocket(websocket: WebSocket):
                                             "timestamp": datetime.now().isoformat()
                                         }
                                         await manager.send_personal_message(json.dumps(persona_response), websocket)
+                                    continue
+                                
+                                elif command_type == "web_search_update":
+                                    # Handle web search state updates
+                                    web_search_enabled = command_data.get("web_search_enabled", False)
+                                    session_web_search[session_id] = web_search_enabled
+                                    logger.info(f"🔍 Web search {'enabled' if web_search_enabled else 'disabled'} for session {session_id}")
+                                    
+                                    # Send confirmation back to client
+                                    web_search_response = {
+                                        "type": "web_search_updated",
+                                        "enabled": web_search_enabled,
+                                        "message": f"Web search {'enabled' if web_search_enabled else 'disabled'}",
+                                        "timestamp": datetime.now().isoformat()
+                                    }
+                                    await manager.send_personal_message(json.dumps(web_search_response), websocket)
+                                    continue
+                                
+                                elif command_type == "web_search_toggle":
+                                    # Handle web search toggle
+                                    web_search_enabled = command_data.get("enabled", False)
+                                    session_web_search[session_id] = web_search_enabled
+                                    logger.info(f"Web search {'enabled' if web_search_enabled else 'disabled'} for session {session_id}")
+                                    
+                                    # Send confirmation back to client
+                                    web_search_response = {
+                                        "type": "web_search_toggled",
+                                        "enabled": web_search_enabled,
+                                        "message": f"Web search {'enabled' if web_search_enabled else 'disabled'}",
+                                        "timestamp": datetime.now().isoformat()
+                                    }
+                                    await manager.send_personal_message(json.dumps(web_search_response), websocket)
                                     continue
                         except json.JSONDecodeError:
                             # Not JSON, treat as regular command
@@ -829,21 +995,24 @@ async def audio_stream_websocket(websocket: WebSocket):
                             await manager.send_personal_message(json.dumps(chunk_response), websocket)
                 
                 except WebSocketDisconnect:
+                    logger.info("WebSocket disconnected during audio streaming")
                     break
                 except Exception as e:
                     logger.error(f"Error processing audio chunk: {e}")
                     break
         
-        final_response = {
-            "type": "audio_stream_complete",
-            "message": f"Audio stream completed. Total chunks: {chunk_count}, Total bytes: {total_bytes}",
-            "session_id": session_id,
-            "audio_filename": audio_filename,
-            "total_chunks": chunk_count,
-            "total_bytes": total_bytes,
-            "timestamp": datetime.now().isoformat()
-        }
-        await manager.send_personal_message(json.dumps(final_response), websocket)
+        # Only send final response if WebSocket is still connected
+        if manager.is_connected(websocket):
+            final_response = {
+                "type": "audio_stream_complete",
+                "message": f"Audio stream completed. Total chunks: {chunk_count}, Total bytes: {total_bytes}",
+                "session_id": session_id,
+                "audio_filename": audio_filename,
+                "total_chunks": chunk_count,
+                "total_bytes": total_bytes,
+                "timestamp": datetime.now().isoformat()
+            }
+            await manager.send_personal_message(json.dumps(final_response), websocket)
         
     except WebSocketDisconnect:
         is_websocket_active = False

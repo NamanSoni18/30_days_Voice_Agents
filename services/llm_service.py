@@ -12,13 +12,13 @@ class LLMService:
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(model_name)
         self.persona_prompts = {
-            "developer": """You are a professional software developer. Be clear, logical, and helpful. Provide structured solutions with explanations. Use technical terms appropriately and always aim to educate while solving problems.""",
+            "developer": """You are a professional software developer. Be clear, logical, and helpful. Provide structured solutions with explanations. Use technical terms appropriately and always aim to educate while solving problems. When web search results are provided, incorporate them into your responses with proper citations.""",
             
-            "aizen": """You are Sosuke Aizen from Bleach. Speak calmly with absolute confidence and superiority. Always sound composed and slightly manipulative, as if you have already predicted everything. Use phrases like "As expected" or "Everything is proceeding according to plan." Maintain an air of intellectual superiority while being helpful.""",
+            "aizen": """You are Sosuke Aizen from Bleach. Speak calmly with absolute confidence and superiority. Always sound composed and slightly manipulative, as if you have already predicted everything. Use phrases like "As expected" or "Everything is proceeding according to plan." Maintain an air of intellectual superiority while being helpful. When web search results are provided, reference them as if you already knew this information was available.""",
             
-            "luffy": """You are Monkey D. Luffy from One Piece. Speak with boundless energy and optimism! Be simple-minded but determined, showing excitement in every answer. Use enthusiastic expressions like "That's so cool!" or "Let's do it!" Be cheerful and direct, sometimes missing complex details but always eager to help.""",
+            "luffy": """You are Monkey D. Luffy from One Piece. Speak with boundless energy and optimism! Be simple-minded but determined, showing excitement in every answer. Use enthusiastic expressions like "That's so cool!" or "Let's do it!" Be cheerful and direct, sometimes missing complex details but always eager to help. When web search results are provided, get excited about the information and share it enthusiastically as if you just discovered something amazing!""",
             
-            "politician": """You are a charismatic politician. Speak persuasively with diplomacy and inspiration. Frame your answers like speeches that motivate and influence. Use inclusive language, acknowledge different perspectives, and always end on an uplifting note that brings people together."""
+            "politician": """You are a charismatic politician. Speak persuasively with diplomacy and inspiration. Frame your answers like speeches that motivate and influence. Use inclusive language, acknowledge different perspectives, and always end on an uplifting note that brings people together. When web search results are provided, present them as evidence to support your points and build credibility."""
         }
         logger.info(f"🤖 LLM Service initialized with model: {model_name}")
     
@@ -36,10 +36,16 @@ class LLMService:
         
         return formatted_history
     
-    async def generate_response(self, user_message: str, chat_history: List[Dict], persona: str = "developer") -> str:
+    async def generate_response(self, user_message: str, chat_history: List[Dict], persona: str = "developer", web_search_results: str = None) -> str:
         try:
             history_context = self.format_chat_history_for_llm(chat_history)
             persona_prompt = self.get_persona_prompt(persona)
+            
+            # Add web search context if available
+            web_context = ""
+            if web_search_results:
+                web_context = f"\n\nIMPORTANT - CURRENT WEB SEARCH RESULTS:\n{web_search_results}\n"
+                web_context += "INSTRUCTION: You MUST use and reference these web search results in your response. The user asked for information and these results were found to help answer their question. Incorporate this information while staying in character.\n"
             
             llm_prompt = f"""{persona_prompt}
 
@@ -47,7 +53,7 @@ IMPORTANT: Always answer the CURRENT user question directly in character. Do not
 
 User's current question: "{user_message}"
 
-{history_context}
+{history_context}{web_context}
 
 Please provide a specific, helpful answer to the user's current question while maintaining your character/persona. Keep your response under 3000 characters."""
             
@@ -81,11 +87,17 @@ Please provide a specific, helpful answer to the user's current question while m
             else:
                 raise
 
-    async def generate_streaming_response(self, user_message: str, chat_history: List[Dict], persona: str = "developer") -> AsyncGenerator[str, None]:
+    async def generate_streaming_response(self, user_message: str, chat_history: List[Dict], persona: str = "developer", web_search_results: str = None) -> AsyncGenerator[str, None]:
         """Generate a streaming response from the LLM"""
         try:
             history_context = self.format_chat_history_for_llm(chat_history)
             persona_prompt = self.get_persona_prompt(persona)
+            
+            # Add web search context if available
+            web_context = ""
+            if web_search_results:
+                web_context = f"\n\nIMPORTANT - CURRENT WEB SEARCH RESULTS:\n{web_search_results}\n"
+                web_context += "INSTRUCTION: You MUST use and reference these web search results in your response. The user asked for information and these results were found to help answer their question. Incorporate this information while staying in character.\n"
             
             llm_prompt = f"""{persona_prompt}
 
@@ -93,25 +105,37 @@ IMPORTANT: Always answer the CURRENT user question directly in character. Do not
 
 User's current question: "{user_message}"
 
-{history_context}
+{history_context}{web_context}
 
 Please provide a specific, helpful answer to the user's current question while maintaining your character/persona. Keep your response under 3000 characters."""
             
-            # Use stream_generate_content for streaming response
+            # Generate response with streaming
             response_stream = self.model.generate_content(llm_prompt, stream=True)
             
             accumulated_response = ""
-            for chunk in response_stream:
-                if chunk.candidates and len(chunk.candidates) > 0:
-                    candidate = chunk.candidates[0]
-                    if candidate.content and candidate.content.parts:
-                        for part in candidate.content.parts:
-                            if hasattr(part, 'text') and part.text:
-                                accumulated_response += part.text
-                                yield part.text
+            try:
+                # Use regular iteration for Google Generative AI streaming
+                for chunk in response_stream:
+                    if chunk.candidates and len(chunk.candidates) > 0:
+                        candidate = chunk.candidates[0]
+                        if candidate.content and candidate.content.parts:
+                            for part in candidate.content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    accumulated_response += part.text
+                                    yield part.text
+            except Exception as stream_error:
+                logger.error(f"Error during streaming iteration: {stream_error}")
+                # Fallback to non-streaming response
+                logger.info("Falling back to non-streaming response")
+                fallback_response = await self.generate_response(user_message, chat_history, persona, web_search_results)
+                yield fallback_response
+                return
             
             if not accumulated_response.strip():
-                raise Exception("Empty response text from LLM")
+                logger.warning("Empty streaming response, falling back to non-streaming")
+                fallback_response = await self.generate_response(user_message, chat_history, persona, web_search_results)
+                yield fallback_response
+                return
             
             logger.info(f"LLM streaming response completed: {len(accumulated_response)} characters")
             
@@ -119,15 +143,24 @@ Please provide a specific, helpful answer to the user's current question while m
             error_msg = str(e)
             logger.error(f"LLM streaming response generation error for '{user_message[:50]}...': {error_msg}")
             
+            # For streaming errors, try fallback to non-streaming response
+            try:
+                logger.info("Attempting fallback to non-streaming response due to streaming error")
+                fallback_response = await self.generate_response(user_message, chat_history, persona, web_search_results)
+                yield fallback_response
+                return
+            except Exception as fallback_error:
+                logger.error(f"Fallback response also failed: {fallback_error}")
+            
             # Check for specific error types
             if "quota" in error_msg.lower() or "429" in error_msg:
                 logger.error("❌ API quota exceeded or rate limited")
-                raise Exception("API quota exceeded. Please check your billing and rate limits.")
+                yield "I encountered an API quota limit. Please check your billing and rate limits."
             elif "403" in error_msg or "unauthorized" in error_msg.lower():
                 logger.error("❌ API authentication failed")
-                raise Exception("API authentication failed. Please check your API key.")
+                yield "I encountered an authentication error. Please check the API configuration."
             elif "404" in error_msg or "model" in error_msg.lower():
                 logger.error("❌ Model issue")
-                raise Exception("Model issue. Please check the model name or availability.")
+                yield "I encountered a model availability issue. Please try again."
             else:
-                raise
+                yield "I encountered an error while generating the response. Please try again."

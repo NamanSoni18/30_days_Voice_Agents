@@ -7,11 +7,24 @@ document.addEventListener("DOMContentLoaded", function () {
   let isConnecting = false; // Track connection state
   let isStreaming = false; // Track streaming state
   let allSessions = []; // Store all sessions
+  let webSearchEnabled = false; // Track web search mode
+  
+  console.log("🚀 Voice Agent app loaded!");
+  console.log("🔍 Initial web search state:", webSearchEnabled);
   
   // DOM elements
   const toggleChatHistoryBtn = document.getElementById("toggleChatHistory");
   const chatHistoryContainer = document.getElementById("chatHistoryContainer");
   const personaSelect = document.getElementById("personaSelect");
+  const webSearchToggle = document.getElementById("webSearchToggle");
+  
+  // Debug: Log web search button detection
+  console.log("🔍 Web search button element:", webSearchToggle);
+  console.log("🔍 Web search button found:", !!webSearchToggle);
+  if (webSearchToggle) {
+    console.log("🔍 Button ID:", webSearchToggle.id);
+    console.log("🔍 Button class:", webSearchToggle.className);
+  }
   
   // New UI elements
   const chatMessages = document.getElementById("chatMessages");
@@ -55,6 +68,33 @@ document.addEventListener("DOMContentLoaded", function () {
   // Event listeners for new UI
   if (newChatBtn) {
     newChatBtn.addEventListener("click", startNewChat);
+  }
+
+  // Web search toggle event listener
+  if (webSearchToggle) {
+    console.log("🔍 Web search toggle button found and event listener attached");
+    webSearchToggle.addEventListener("click", function() {
+      console.log("🔍 Web search button clicked! Current state:", webSearchEnabled);
+      webSearchEnabled = !webSearchEnabled;
+      console.log("🔍 Web search toggled to:", webSearchEnabled);
+      updateWebSearchToggle();
+      
+      // Send web search update to WebSocket if connected
+      if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.OPEN) {
+        audioStreamSocket.send(JSON.stringify({
+          type: "web_search_update",
+          web_search_enabled: webSearchEnabled
+        }));
+        console.log("🔍 Sent web search update to server:", webSearchEnabled);
+      } else {
+        console.log("🔍 WebSocket not connected, web search state will be sent on next connection");
+      }
+      
+      // Show notification
+      showWebSearchNotification(webSearchEnabled);
+    });
+  } else {
+    console.error("❌ Web search toggle button not found!");
   }
 
   // Event listeners
@@ -266,9 +306,12 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   
   function generateSessionId() {
-    return (
-      "session_" + Math.random().toString(36).substr(2, 9) + "_" + Date.now()
-    );
+    // Generate a proper UUID v4 format instead of custom session format
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0,
+          v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 
   function getPersonaDisplayName(persona) {
@@ -573,8 +616,10 @@ document.addEventListener("DOMContentLoaded", function () {
         audioStreamSocket.send(JSON.stringify({
           type: "session_id",
           session_id: sessionId,
-          persona: selectedPersona
+          persona: selectedPersona,
+          web_search_enabled: webSearchEnabled
         }));
+        console.log("🔍 Sent session data with web search enabled:", webSearchEnabled);
       };
 
       audioStreamSocket.onmessage = function (event) {
@@ -1708,5 +1753,185 @@ document.addEventListener("DOMContentLoaded", function () {
       originalInitializeSession();
     }
     updateSessionDisplay();
+  };
+
+  /**
+   * Update web search toggle button state
+   */
+  function updateWebSearchToggle() {
+    console.log("🔍 Updating web search toggle state:", webSearchEnabled);
+    if (!webSearchToggle) {
+      console.error("❌ Web search toggle button not found in updateWebSearchToggle!");
+      return;
+    }
+    
+    webSearchToggle.setAttribute('data-enabled', webSearchEnabled);
+    const span = webSearchToggle.querySelector('span');
+    if (span) {
+      const newText = webSearchEnabled ? 'Web Search: ON' : 'Web Search';
+      span.textContent = newText;
+      console.log("🔍 Updated button text to:", newText);
+    } else {
+      console.error("❌ Span element not found in web search button!");
+    }
+    
+    // Visual feedback
+    if (webSearchEnabled) {
+      console.log("🟢 Web search is now ENABLED");
+    } else {
+      console.log("🔴 Web search is now DISABLED");
+    }
+  }
+
+  /**
+   * Show web search notification
+   */
+  function showWebSearchNotification(enabled) {
+    const notification = document.createElement('div');
+    notification.className = 'web-search-notification';
+    notification.innerHTML = `
+      <div class="notification-content">
+        <i class="fas fa-${enabled ? 'check-circle' : 'times-circle'}"></i>
+        <span>Web Search ${enabled ? 'Enabled' : 'Disabled'}</span>
+      </div>
+    `;
+    
+    // Style the notification
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: ${enabled ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #ef4444, #dc2626)'};
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+      opacity: 0;
+      transform: translateX(100%);
+      transition: all 0.3s ease;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Animate in
+    setTimeout(() => {
+      notification.style.opacity = '1';
+      notification.style.transform = 'translateX(0)';
+    }, 10);
+    
+    // Animate out and remove
+    setTimeout(() => {
+      notification.style.opacity = '0';
+      notification.style.transform = 'translateX(100%)';
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 300);
+    }, 3000);
+  }
+
+  /**
+   * Search the web using Tavily API
+   */
+  async function searchWeb(query) {
+    console.log("🔍 searchWeb called with query:", query);
+    try {
+      console.log("🔍 Making fetch request to /api/web-search");
+      const response = await fetch('/api/web-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query })
+      });
+      
+      console.log("🔍 Response status:", response.status);
+      const data = await response.json();
+      console.log("🔍 Web search response:", data);
+      return data;
+    } catch (error) {
+      console.error('❌ Web search error:', error);
+      return {
+        success: false,
+        query,
+        results: [],
+        error_message: 'Failed to perform web search'
+      };
+    }
+  }
+
+  /**
+   * Display web search results in chat
+   */
+  function displayWebSearchResults(searchData) {
+    if (!searchData.success || !searchData.results || searchData.results.length === 0) {
+      return '';
+    }
+    
+    let resultsHtml = `
+      <div class="web-search-results">
+        <div class="web-search-header">
+          <i class="fas fa-globe"></i>
+          <span>Web Search Results for "${searchData.query}"</span>
+        </div>
+        <ul class="web-search-list">
+    `;
+    
+    searchData.results.forEach((result, index) => {
+      resultsHtml += `
+        <li class="web-search-item">
+          <div class="web-result-title">${escapeHtml(result.title)}</div>
+          <div class="web-result-snippet">${escapeHtml(result.snippet)}</div>
+          <a href="${escapeHtml(result.url)}" target="_blank" class="web-result-link" rel="noopener noreferrer">
+            ${escapeHtml(result.url)}
+          </a>
+        </li>
+      `;
+    });
+    
+    resultsHtml += `
+        </ul>
+      </div>
+    `;
+    
+    return resultsHtml;
+  }
+
+  /**
+   * Show web search status indicator
+   */
+  function showWebSearchStatus(query) {
+    if (!chatMessages) return;
+    
+    const statusElement = document.createElement('div');
+    statusElement.className = 'web-search-status searching';
+    statusElement.innerHTML = `
+      <i class="fas fa-spinner"></i>
+      <span>Searching the web for "${escapeHtml(query)}"...</span>
+    `;
+    
+    chatMessages.appendChild(statusElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    return statusElement;
+  }
+
+  /**
+   * Escape HTML to prevent XSS
+   */
+  function escapeHtml(unsafe) {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  // Expose webSearchEnabled globally for WebSocket
+  window.getWebSearchEnabled = function() {
+    return webSearchEnabled;
   };
 });

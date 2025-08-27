@@ -81,6 +81,7 @@ class APIKeyConfig(BaseModel):
     murf_api_key: Optional[str] = None
     murf_voice_id: Optional[str] = None
     mongodb_url: Optional[str] = None
+    tavily_api_key: Optional[str] = None
 
     def validate_keys(self) -> List[str]:
         missing_keys = []
@@ -99,3 +100,16 @@ class APIKeyConfig(BaseModel):
     @property
     def are_keys_valid(self) -> bool:
         return len(self.validate_keys()) == 0
+
+
+class WebSearchResult(BaseModel):
+    title: str = Field(..., description="Title of the search result")
+    snippet: str = Field(..., description="Snippet/summary of the search result")
+    url: str = Field(..., description="URL of the search result")
+
+
+class WebSearchResponse(BaseModel):
+    success: bool = Field(..., description="Whether the web search was successful")
+    query: str = Field(..., description="The search query")
+    results: List[WebSearchResult] = Field(default_factory=list, description="List of search results")
+    error_message: Optional[str] = Field(None, description="Error message if search failed")
