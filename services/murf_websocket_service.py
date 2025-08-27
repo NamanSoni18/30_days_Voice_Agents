@@ -168,7 +168,7 @@ class MurfWebSocketService:
                         response = await asyncio.wait_for(self.websocket.recv(), timeout=60.0)  # Increased timeout
                     
                     data = json.loads(response)
-                    logger.info(f"📥 Received response: {list(data.keys())}")
+                    # logger.info(f"📥 Received response: {list(data.keys())}")
                     
                     if "audio" in data:
                         audio_chunk_count += 1
@@ -194,7 +194,7 @@ class MurfWebSocketService:
                     
                     else:
                         # Non-audio response
-                        logger.info(f"Received non-audio response: {data}")
+                        # logger.info(f"Received non-audio response: {data}")
                         yield {
                             "type": "status",
                             "data": data,

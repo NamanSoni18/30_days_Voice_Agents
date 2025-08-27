@@ -44,8 +44,23 @@ class LLMService:
             # Add web search context if available
             web_context = ""
             if web_search_results:
-                web_context = f"\n\nIMPORTANT - CURRENT WEB SEARCH RESULTS:\n{web_search_results}\n"
-                web_context += "INSTRUCTION: You MUST use and reference these web search results in your response. The user asked for information and these results were found to help answer their question. Incorporate this information while staying in character.\n"
+                if "No web search results found" in web_search_results:
+                    web_context = f"\n\nWEB SEARCH STATUS: No reliable search results were found for this query.\n"
+                    web_context += "INSTRUCTION: Politely inform the user that you couldn't find reliable current information on this topic. You can still provide general knowledge if appropriate, but mention that you weren't able to find recent/reliable web sources.\n"
+                else:
+                    web_context = f"\n\nCURRENT WEB SEARCH RESULTS:\n{web_search_results}\n"
+                    web_context += """INSTRUCTIONS FOR WEB SEARCH RESULTS:
+1. Extract only the most relevant, reliable information from these search results
+2. Summarize the findings into a clear, conversational response with key points
+3. ALWAYS include actual URLs when citing sources - do NOT use "this link" placeholders
+4. If the search results don't contain useful information, politely say you couldn't find reliable results
+5. Keep responses concise, factual, and user-friendly
+6. Always prioritize clarity and relevance over raw data
+7. Format your response with bullet points or numbered lists when appropriate
+8. ALWAYS end with sources section: "📌 Sources: [Title]: [URL]" format using the actual URLs provided
+9. Use the exact URLs from the search results provided above
+
+"""
             
             llm_prompt = f"""{persona_prompt}
 
@@ -96,8 +111,23 @@ Please provide a specific, helpful answer to the user's current question while m
             # Add web search context if available
             web_context = ""
             if web_search_results:
-                web_context = f"\n\nIMPORTANT - CURRENT WEB SEARCH RESULTS:\n{web_search_results}\n"
-                web_context += "INSTRUCTION: You MUST use and reference these web search results in your response. The user asked for information and these results were found to help answer their question. Incorporate this information while staying in character.\n"
+                if "No web search results found" in web_search_results:
+                    web_context = f"\n\nWEB SEARCH STATUS: No reliable search results were found for this query.\n"
+                    web_context += "INSTRUCTION: Politely inform the user that you couldn't find reliable current information on this topic. You can still provide general knowledge if appropriate, but mention that you weren't able to find recent/reliable web sources.\n"
+                else:
+                    web_context = f"\n\nCURRENT WEB SEARCH RESULTS:\n{web_search_results}\n"
+                    web_context += """INSTRUCTIONS FOR WEB SEARCH RESULTS:
+1. Extract only the most relevant, reliable information from these search results
+2. Summarize the findings into a clear, conversational response with key points
+3. ALWAYS include actual URLs when citing sources - do NOT use "this link" placeholders
+4. If the search results don't contain useful information, politely say you couldn't find reliable results
+5. Keep responses concise, factual, and user-friendly
+6. Always prioritize clarity and relevance over raw data
+7. Format your response with bullet points or numbered lists when appropriate
+8. ALWAYS end with sources section: "📌 Sources: [Title]: [URL]" format using the actual URLs provided
+9. Use the exact URLs from the search results provided above
+
+"""
             
             llm_prompt = f"""{persona_prompt}
 

@@ -31,13 +31,19 @@ class WebSearchService:
             
             if "results" in response and response["results"]:
                 for result in response["results"]:
-                    search_results.append({
-                        "title": result.get("title", ""),
-                        "snippet": result.get("content", ""),
-                        "url": result.get("url", "")
-                    })
+                    title = result.get("title", "")
+                    content = result.get("content", "")
+                    url = result.get("url", "")
+                    
+                    # Filter out results with very short or empty content
+                    if content and len(content.strip()) > 20:
+                        search_results.append({
+                            "title": title,
+                            "snippet": content,
+                            "url": url
+                        })
                 
-                logger.info(f"✅ Found {len(search_results)} web search results")
+                logger.info(f"✅ Found {len(search_results)} relevant web search results")
             else:
                 logger.warning("⚠️ No search results found")
             
@@ -57,12 +63,13 @@ class WebSearchService:
             else:
                 raise Exception(f"Web search failed: {error_msg}")
     
-    def format_search_results_for_llm(self, search_results: List[Dict]) -> str:
+    def format_search_results_for_llm(self, search_results: List[Dict], show_urls: bool = False) -> str:
         """
         Format search results for inclusion in LLM prompt
         
         Args:
             search_results (List[Dict]): List of search results
+            show_urls (bool): Whether to include URLs in the formatted output
         
         Returns:
             str: Formatted search results for LLM context
@@ -73,10 +80,33 @@ class WebSearchService:
         formatted_results = "\n\nWeb Search Results:\n"
         for i, result in enumerate(search_results, 1):
             formatted_results += f"\n{i}. **{result.get('title', 'No title')}**\n"
-            formatted_results += f"   URL: {result.get('url', 'No URL')}\n"
-            formatted_results += f"   Summary: {result.get('snippet', 'No summary')}\n"
+            if show_urls:
+                formatted_results += f"   URL: {result.get('url', 'No URL')}\n"
+            formatted_results += f"   Content: {result.get('snippet', 'No content available')}\n"
         
         return formatted_results
+    
+    def format_search_results_with_urls(self, search_results: List[Dict]) -> str:
+        """
+        Format search results with actual URLs for user display
+        
+        Args:
+            search_results (List[Dict]): List of search results
+        
+        Returns:
+            str: Formatted search results with actual URLs
+        """
+        if not search_results:
+            return ""
+        
+        # Create a sources list with actual URLs
+        sources_text = "📌 Sources:\n"
+        for i, result in enumerate(search_results, 1):
+            title = result.get('title', f'Source {i}')
+            url = result.get('url', 'No URL')
+            sources_text += f"{i}. {title}: {url}\n"
+        
+        return sources_text
     
     def is_configured(self) -> bool:
         """Check if web search service is properly configured"""

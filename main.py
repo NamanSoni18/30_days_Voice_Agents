@@ -491,6 +491,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
         
         # Initialize web search results
         web_search_results = None
+        search_results = None  # Store actual search results for sources
         
         # Perform web search if enabled
         if web_search_enabled and web_search_service and web_search_service.is_configured():
@@ -509,7 +510,12 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                 search_results = await web_search_service.search_web(user_message, max_results=3)
                 
                 if search_results:
-                    web_search_results = web_search_service.format_search_results_for_llm(search_results)
+                    # Always format results with URLs for LLM context
+                    web_search_results = web_search_service.format_search_results_for_llm(
+                        search_results, 
+                        show_urls=True  # Always show URLs to LLM
+                    )
+                    
                     logger.info(f"✅ Web search completed, found {len(search_results)} results")
                     
                     # Send web search results to client
@@ -517,6 +523,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                         "type": "web_search_complete",
                         "message": f"Found {len(search_results)} web results",
                         "results": search_results,
+                        "include_urls": True,  # Always include URLs now
                         "timestamp": datetime.now().isoformat()
                     }
                     await manager.send_personal_message(json.dumps(search_complete_message), websocket)
