@@ -55,6 +55,10 @@
           <div class="session-info">
             <small>Session: <span id="sessionId">{{ session_id }}</span></small>
           </div>
+          <button id="settingsBtn" class="settings-btn">
+            <i class="fas fa-cog"></i>
+            <span>Settings</span>
+          </button>
         </div>
       </div>
 
@@ -166,6 +170,104 @@
         <div class="modal-footer">
           <button id="modalCloseBtn" class="btn secondary">Close</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal settings-modal" style="display: none;">
+      <div class="modal-content settings-content">
+        <div class="modal-header">
+          <h3><i class="fas fa-cog"></i> API Settings</h3>
+          <button id="closeSettingsModal" class="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-body settings-body">
+          <div class="settings-notice">
+            <div class="notice-card">
+              <i class="fas fa-info-circle"></i>
+              <p>Configure your API keys to use the voice agent. All keys are stored locally in your browser and are not sent to any external servers except the respective API providers.</p>
+            </div>
+          </div>
+          
+          <form id="apiKeysForm" class="api-keys-form">
+            <div class="form-group">
+              <label for="murfApiKey">
+                <i class="fas fa-volume-up"></i>
+                MURF API Key
+                <span class="required">*</span>
+              </label>
+              <input type="password" id="murfApiKey" name="murfApiKey" placeholder="Enter your MURF API key" required>
+              <small class="field-help">Used for text-to-speech generation</small>
+            </div>
+
+            <div class="form-group">
+              <label for="assemblyaiApiKey">
+                <i class="fas fa-microphone"></i>
+                AssemblyAI API Key
+                <span class="required">*</span>
+              </label>
+              <input type="password" id="assemblyaiApiKey" name="assemblyaiApiKey" placeholder="Enter your AssemblyAI API key" required>
+              <small class="field-help">Used for speech-to-text conversion</small>
+            </div>
+
+            <div class="form-group">
+              <label for="murfVoiceId">
+                <i class="fas fa-user-alt"></i>
+                Voice ID (Optional)
+              </label>
+              <input type="text" id="murfVoiceId" name="murfVoiceId" placeholder="en-IN-aarav" value="en-IN-aarav">
+              <small class="field-help">Voice ID for MURF TTS (default: en-IN-aarav)</small>
+            </div>
+
+            <div class="form-group">
+              <label for="geminiApiKey">
+                <i class="fas fa-brain"></i>
+                Gemini API Key
+                <span class="required">*</span>
+              </label>
+              <input type="password" id="geminiApiKey" name="geminiApiKey" placeholder="Enter your Gemini API key" required>
+              <small class="field-help">Used for AI conversation and responses</small>
+            </div>
+
+            <div class="form-group">
+              <label for="tavilyApiKey">
+                <i class="fas fa-search"></i>
+                Tavily API Key (Optional)
+              </label>
+              <input type="password" id="tavilyApiKey" name="tavilyApiKey" placeholder="Enter your Tavily API key">
+              <small class="field-help">Used for web search functionality (optional)</small>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer settings-footer">
+          <button id="clearApiKeys" class="btn secondary clear-btn">
+            <i class="fas fa-trash"></i>
+            Clear All
+          </button>
+          <div class="footer-actions">
+            <button id="cancelSettings" class="btn secondary">Cancel</button>
+            <button id="saveApiKeys" class="btn primary">
+              <i class="fas fa-save"></i>
+              Save Settings
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- API Keys Missing Alert -->
+    <div id="apiKeysAlert" class="api-alert" style="display: none;">
+      <div class="alert-content">
+        <div class="alert-icon">
+          <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <div class="alert-message">
+          <h4>API Keys Required</h4>
+          <p>Please configure your API keys in the settings to use the voice agent.</p>
+        </div>
+        <button id="openSettingsFromAlert" class="btn primary alert-btn">
+          <i class="fas fa-cog"></i>
+          Open Settings
+        </button>
       </div>
     </div>
 

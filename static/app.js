@@ -142,10 +142,56 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   
+  // Settings modal event listeners
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsModal = document.getElementById("settingsModal");
+  const closeSettingsModal = document.getElementById("closeSettingsModal");
+  const cancelSettings = document.getElementById("cancelSettings");
+  const saveApiKeys = document.getElementById("saveApiKeys");
+  const clearApiKeys = document.getElementById("clearApiKeys");
+  const apiKeysAlert = document.getElementById("apiKeysAlert");
+  const openSettingsFromAlert = document.getElementById("openSettingsFromAlert");
+
+  if (settingsBtn) {
+    settingsBtn.addEventListener("click", openSettings);
+  }
+  if (closeSettingsModal) {
+    closeSettingsModal.addEventListener("click", closeSettings);
+  }
+  if (cancelSettings) {
+    cancelSettings.addEventListener("click", closeSettings);
+  }
+  if (saveApiKeys) {
+    saveApiKeys.addEventListener("click", saveApiKeysToStorage);
+  }
+  if (clearApiKeys) {
+    clearApiKeys.addEventListener("click", clearAllApiKeys);
+  }
+  if (openSettingsFromAlert) {
+    openSettingsFromAlert.addEventListener("click", function() {
+      hideApiKeysAlert();
+      openSettings();
+    });
+  }
+
+  // Close settings modal when clicking outside
+  if (settingsModal) {
+    settingsModal.addEventListener("click", function(e) {
+      if (e.target === settingsModal) {
+        closeSettings();
+      }
+    });
+  }
+  
   // Close modal with Escape key
   document.addEventListener("keydown", function(e) {
-    if (e.key === "Escape" && conversationModal && conversationModal.style.display !== "none") {
-      closeModal();
+    if (e.key === "Escape") {
+      if (conversationModal && conversationModal.style.display !== "none") {
+        closeModal();
+      }
+      if (settingsModal && settingsModal.style.display !== "none") {
+        closeSettings();
+      }
     }
   });
 
@@ -349,6 +395,211 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     
     console.log("Session initialized:", sessionId);
+    
+    // Check API keys on startup
+    checkApiKeysOnStartup();
+  }
+
+  // Settings Functions
+  function checkApiKeysOnStartup() {
+    const apiKeys = getStoredApiKeys();
+    const requiredKeys = ['murfApiKey', 'assemblyaiApiKey', 'geminiApiKey'];
+    const missingKeys = requiredKeys.filter(key => !apiKeys[key] || apiKeys[key].trim() === '');
+    
+    if (missingKeys.length > 0) {
+      console.log("Missing required API keys:", missingKeys);
+      showApiKeysAlert();
+      
+      // Disable microphone button
+      const audioStreamBtn = document.getElementById("audioStreamBtn");
+      if (audioStreamBtn) {
+        audioStreamBtn.disabled = true;
+        audioStreamBtn.style.opacity = "0.5";
+        audioStreamBtn.style.cursor = "not-allowed";
+        audioStreamBtn.title = "Please configure API keys in settings first";
+      }
+      
+      // Show disabled message in welcome
+      const welcomeMessage = document.querySelector('.welcome-message p');
+      if (welcomeMessage) {
+        welcomeMessage.textContent = "Please configure your API keys in settings before using the voice agent.";
+        welcomeMessage.style.color = "#ef4444";
+      }
+    } else {
+      // Enable microphone button
+      const audioStreamBtn = document.getElementById("audioStreamBtn");
+      if (audioStreamBtn) {
+        audioStreamBtn.disabled = false;
+        audioStreamBtn.style.opacity = "1";
+        audioStreamBtn.style.cursor = "pointer";
+        audioStreamBtn.title = "Click to talk";
+      }
+    }
+  }
+
+  function getStoredApiKeys() {
+    return {
+      murfApiKey: localStorage.getItem('voice_agent_murf_api_key') || '',
+      assemblyaiApiKey: localStorage.getItem('voice_agent_assemblyai_api_key') || '',
+      murfVoiceId: localStorage.getItem('voice_agent_murf_voice_id') || 'en-IN-aarav',
+      geminiApiKey: localStorage.getItem('voice_agent_gemini_api_key') || '',
+      tavilyApiKey: localStorage.getItem('voice_agent_tavily_api_key') || ''
+    };
+  }
+
+  function openSettings() {
+    const settingsModal = document.getElementById("settingsModal");
+    const apiKeys = getStoredApiKeys();
+    
+    // Populate form with stored values
+    document.getElementById("murfApiKey").value = apiKeys.murfApiKey;
+    document.getElementById("assemblyaiApiKey").value = apiKeys.assemblyaiApiKey;
+    document.getElementById("murfVoiceId").value = apiKeys.murfVoiceId;
+    document.getElementById("geminiApiKey").value = apiKeys.geminiApiKey;
+    document.getElementById("tavilyApiKey").value = apiKeys.tavilyApiKey;
+    
+    settingsModal.style.display = "flex";
+    hideApiKeysAlert();
+  }
+
+  function closeSettings() {
+    const settingsModal = document.getElementById("settingsModal");
+    settingsModal.style.display = "none";
+  }
+
+  function saveApiKeysToStorage() {
+    const formData = {
+      murfApiKey: document.getElementById("murfApiKey").value.trim(),
+      assemblyaiApiKey: document.getElementById("assemblyaiApiKey").value.trim(),
+      murfVoiceId: document.getElementById("murfVoiceId").value.trim() || 'en-IN-aarav',
+      geminiApiKey: document.getElementById("geminiApiKey").value.trim(),
+      tavilyApiKey: document.getElementById("tavilyApiKey").value.trim()
+    };
+
+    // Validate required fields
+    const requiredFields = ['murfApiKey', 'assemblyaiApiKey', 'geminiApiKey'];
+    const missingFields = requiredFields.filter(field => !formData[field]);
+    
+    if (missingFields.length > 0) {
+      alert('Please fill in all required fields: ' + missingFields.map(f => f.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())).join(', '));
+      return;
+    }
+
+    // Store in localStorage
+    localStorage.setItem('voice_agent_murf_api_key', formData.murfApiKey);
+    localStorage.setItem('voice_agent_assemblyai_api_key', formData.assemblyaiApiKey);
+    localStorage.setItem('voice_agent_murf_voice_id', formData.murfVoiceId);
+    localStorage.setItem('voice_agent_gemini_api_key', formData.geminiApiKey);
+    localStorage.setItem('voice_agent_tavily_api_key', formData.tavilyApiKey);
+
+    console.log("API keys saved to localStorage");
+    closeSettings();
+    
+    // Re-enable microphone button and restore welcome message
+    const audioStreamBtn = document.getElementById("audioStreamBtn");
+    if (audioStreamBtn) {
+      audioStreamBtn.disabled = false;
+      audioStreamBtn.style.opacity = "1";
+      audioStreamBtn.style.cursor = "pointer";
+      audioStreamBtn.title = "Click to talk";
+    }
+    
+    // Restore welcome message
+    const welcomeMessage = document.querySelector('.welcome-message p');
+    if (welcomeMessage) {
+      welcomeMessage.textContent = "Start a conversation by clicking the microphone button below. I'll listen and respond in real-time!";
+      welcomeMessage.style.color = "";
+    }
+    
+    // Send API keys to WebSocket if connected
+    if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.OPEN) {
+      audioStreamSocket.send(JSON.stringify({
+        type: "api_keys_update",
+        api_keys: {
+          murf_api_key: formData.murfApiKey,
+          assemblyai_api_key: formData.assemblyaiApiKey,
+          murf_voice_id: formData.murfVoiceId,
+          gemini_api_key: formData.geminiApiKey,
+          tavily_api_key: formData.tavilyApiKey
+        }
+      }));
+      console.log("🔑 Updated API keys sent to backend");
+      showNotification("API keys saved and updated successfully!", "success");
+    } else {
+      showNotification("API keys saved successfully! Please start a new conversation to use the new settings.", "success");
+    }
+  }
+
+  function clearAllApiKeys() {
+    if (confirm("Are you sure you want to clear all API keys? This cannot be undone.")) {
+      localStorage.removeItem('voice_agent_murf_api_key');
+      localStorage.removeItem('voice_agent_assemblyai_api_key');
+      localStorage.removeItem('voice_agent_murf_voice_id');
+      localStorage.removeItem('voice_agent_gemini_api_key');
+      localStorage.removeItem('voice_agent_tavily_api_key');
+      
+      // Clear form
+      document.getElementById("murfApiKey").value = '';
+      document.getElementById("assemblyaiApiKey").value = '';
+      document.getElementById("murfVoiceId").value = 'en-IN-aarav';
+      document.getElementById("geminiApiKey").value = '';
+      document.getElementById("tavilyApiKey").value = '';
+      
+      console.log("All API keys cleared");
+      showNotification("All API keys cleared", "info");
+    }
+  }
+
+  function showApiKeysAlert() {
+    const apiKeysAlert = document.getElementById("apiKeysAlert");
+    if (apiKeysAlert) {
+      apiKeysAlert.style.display = "block";
+    }
+  }
+
+  function hideApiKeysAlert() {
+    const apiKeysAlert = document.getElementById("apiKeysAlert");
+    if (apiKeysAlert) {
+      apiKeysAlert.style.display = "none";
+    }
+  }
+
+  function showNotification(message, type = "info") {
+    // Create notification element
+    const notification = document.createElement("div");
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+      <div class="notification-content">
+        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+        <span>${message}</span>
+      </div>
+    `;
+    
+    // Add styles
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
+      color: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 10002;
+      animation: slideInRight 0.3s ease-out;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Remove after 4 seconds
+    setTimeout(() => {
+      notification.style.animation = "slideInRight 0.3s ease-out reverse";
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 300);
+    }, 4000);
   }
 
   function initializeStreamingMode() {
@@ -612,6 +863,9 @@ document.addEventListener("DOMContentLoaded", function () {
         updateConnectionStatus("connected", "Connected");
         console.log("WebSocket connected successfully");
         
+        // Ensure audio playback system is ready for this session
+        ensureAudioSystemReady();
+        
         // Send session ID and persona to establish the session on the backend
         audioStreamSocket.send(JSON.stringify({
           type: "session_id",
@@ -620,6 +874,26 @@ document.addEventListener("DOMContentLoaded", function () {
           web_search_enabled: webSearchEnabled
         }));
         console.log("🔍 Sent session data with web search enabled:", webSearchEnabled);
+        
+        // Send API keys if available
+        const apiKeys = getStoredApiKeys();
+        const hasRequiredKeys = apiKeys.murfApiKey && apiKeys.assemblyaiApiKey && apiKeys.geminiApiKey;
+        
+        if (hasRequiredKeys) {
+          audioStreamSocket.send(JSON.stringify({
+            type: "api_keys_update",
+            api_keys: {
+              murf_api_key: apiKeys.murfApiKey,
+              assemblyai_api_key: apiKeys.assemblyaiApiKey,
+              murf_voice_id: apiKeys.murfVoiceId,
+              gemini_api_key: apiKeys.geminiApiKey,
+              tavily_api_key: apiKeys.tavilyApiKey
+            }
+          }));
+          console.log("🔑 Sent user API keys to backend");
+        } else {
+          console.log("⚠️ Missing required API keys, using server defaults");
+        }
       };
 
       audioStreamSocket.onmessage = function (event) {
@@ -699,6 +973,7 @@ document.addEventListener("DOMContentLoaded", function () {
           displayTTSStreamingStart();
         } else if (data.type === "tts_audio_chunk") {
           // Handle audio base64 chunks from TTS
+          console.log(`Received audio chunk for session: ${sessionId}`);
           handleAudioChunk(data);
         } else if (data.type === "tts_status") {
           // Removed excessive TTS status logging
@@ -737,6 +1012,37 @@ document.addEventListener("DOMContentLoaded", function () {
           if (personaBadge) {
             personaBadge.textContent = getPersonaDisplayName(data.persona).split(' ')[0];
             personaBadge.setAttribute('data-persona', data.persona);
+          }
+        } else if (data.type === "api_keys_required") {
+          // Stop audio recording if active
+          if (audioStreamRecorder && audioStreamRecorder.state === "recording") {
+            audioStreamRecorder.stop();
+          }
+          
+          // Update status
+          updateStreamingStatus(`🔒 ${data.message}`, "error");
+          
+          // Show API keys alert
+          showApiKeysAlert();
+          
+          // Reset streaming state
+          resetStreamingState();
+          
+          console.warn("API keys required:", data.message);
+        } else if (data.type === "api_keys_updated") {
+          if (data.success) {
+            updateStreamingStatus(`✅ ${data.message}`, "success");
+            hideApiKeysAlert();
+            
+            if (data.streaming_ready) {
+              showNotification("API keys updated successfully! Voice agent is ready to use.", "success");
+              updateStreamingStatus("🎯 Streaming client ready - You can now use voice input", "success");
+            } else {
+              showNotification("API keys updated but streaming not ready. Please try refreshing.", "warning");
+            }
+          } else {
+            updateStreamingStatus(`❌ ${data.message}`, "error");
+            showNotification("Failed to update API keys. Please check your keys and try again.", "error");
           }
         }
       };
@@ -1189,6 +1495,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function handleAudioChunk(audioData) {
     // Play the audio chunk for streaming
+    console.log(`Processing audio chunk for session: ${sessionId}`);
     playAudioChunk(audioData.audio_base64);
     
     // Remove the audio chunk received message as requested
@@ -1371,10 +1678,20 @@ document.addEventListener("DOMContentLoaded", function () {
   
   function initializeAudioContext() {
     try {
-      if (!audioContext) {
+      // If audio context doesn't exist or is closed, create a new one
+      if (!audioContext || audioContext.state === 'closed') {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         playheadTime = audioContext.currentTime;
+        console.log('New audio context created for session:', sessionId);
       }
+      
+      // If audio context is suspended, try to resume it
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().catch(err => {
+          console.log('Failed to resume audio context:', err);
+        });
+      }
+      
       return true;
     } catch (error) {
       console.error('Failed to initialize audio context:', error);
@@ -1388,7 +1705,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const offset = wavHeaderSet ? 44 : 0; // Skip WAV header if present
       
       if (wavHeaderSet) {
-        wavHeaderSet = false; // Only process header once
+        wavHeaderSet = false; // Only process header once per session
+        console.log(`WAV header processed for session: ${sessionId}`);
       }
       
       const length = binary.length - offset;
@@ -1419,8 +1737,21 @@ document.addEventListener("DOMContentLoaded", function () {
     if (audioChunks.length > 0) {
       const chunk = audioChunks.shift();
       
+      // Ensure audio context is ready before playing
+      if (!audioContext || audioContext.state === 'closed') {
+        console.log('Audio context not available for playback, reinitializing...');
+        if (!initializeAudioContext()) {
+          console.error('Failed to reinitialize audio context');
+          isPlaying = false;
+          hideAudioPlaybackIndicator();
+          return;
+        }
+      }
+      
       if (audioContext.state === "suspended") {
-        audioContext.resume();
+        audioContext.resume().catch(err => {
+          console.error('Failed to resume audio context:', err);
+        });
       }
       
       try {
@@ -1439,7 +1770,7 @@ document.addEventListener("DOMContentLoaded", function () {
         source.start(playheadTime);
         playheadTime += buffer.duration;
         
-        updatePlaybackStatus(`Playing audio chunk`);
+        updatePlaybackStatus(`Playing audio chunk (Session: ${sessionId})`);
         
         // Continue playing remaining chunks
         if (audioChunks.length > 0) {
@@ -1460,6 +1791,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       // Initialize audio context if not already done
       if (!initializeAudioContext()) {
+        console.error('Failed to initialize audio context for audio playback');
         return;
       }
 
@@ -1469,21 +1801,29 @@ document.addEventListener("DOMContentLoaded", function () {
       // Convert base64 to PCM data
       const float32Array = base64ToPCMFloat32(base64Audio);
       if (!float32Array || float32Array.length === 0) {
+        console.log('No valid audio data to play');
         return;
       }
       
       // Add chunk to playback queue
       audioChunks.push(float32Array);
+      console.log(`Audio chunk added to queue. Queue length: ${audioChunks.length}`);
 
       // Start playback if not already playing
       if (!isPlaying && (playheadTime <= audioContext.currentTime + 0.1 || audioChunks.length >= 2)) {
         isPlaying = true;
         audioContext.resume().then(() => {
+          console.log('Starting audio playback for session:', sessionId);
           chunkPlay();
+        }).catch(err => {
+          console.error('Failed to resume audio context:', err);
+          isPlaying = false;
         });
       }
     } catch (error) {
       console.error('Error in playAudioChunk:', error);
+      isPlaying = false;
+      hideAudioPlaybackIndicator();
     }
   }
 
@@ -1497,6 +1837,75 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     
     hideAudioPlaybackIndicator();
+    console.log('Audio playback reset for current session:', sessionId);
+  }
+
+  /**
+   * Reset audio playback system specifically for session switching
+   * This ensures clean audio state when switching between chat sessions
+   */
+  function resetAudioPlaybackForNewSession() {
+    // Stop any currently playing audio
+    if (audioContext && audioContext.state !== 'closed') {
+      try {
+        // Suspend and close the audio context to stop all audio nodes
+        audioContext.suspend().then(() => {
+          if (audioContext && audioContext.state !== 'closed') {
+            return audioContext.close();
+          }
+        }).catch(err => console.log('Audio context close error:', err));
+      } catch (error) {
+        console.log('Error stopping audio context:', error);
+      }
+    }
+
+    // Reset all audio playback variables to ensure clean state
+    audioContext = null;
+    audioChunks = [];
+    playheadTime = 0;
+    isPlaying = false;
+    wavHeaderSet = true; // Reset WAV header flag for new session
+
+    // Hide any audio playback indicators
+    hideAudioPlaybackIndicator();
+    
+    // Clear any TTS status
+    const ttsArea = document.getElementById('ttsStreamingArea');
+    if (ttsArea) {
+      ttsArea.remove();
+    }
+    
+    // Clear any LLM streaming area
+    const llmArea = document.getElementById('llmStreamingArea');
+    if (llmArea) {
+      llmArea.remove();
+    }
+
+    console.log('Audio playback system reset for new session:', sessionId);
+  }
+
+  /**
+   * Ensure audio system is ready for the current session
+   * This should be called when establishing a new WebSocket connection
+   */
+  function ensureAudioSystemReady() {
+    // Reset audio state to ensure clean initialization for new session
+    audioChunks = [];
+    isPlaying = false;
+    wavHeaderSet = true; // Ensure WAV header processing is reset for new session
+    
+    // Don't create audio context here - let it be created when first needed
+    // This prevents issues with browser audio policy
+    if (audioContext) {
+      playheadTime = audioContext.currentTime;
+    } else {
+      playheadTime = 0;
+    }
+    
+    // Hide any old audio indicators
+    hideAudioPlaybackIndicator();
+    
+    console.log('Audio system ready for session:', sessionId);
   }
 
   /**
@@ -1624,6 +2033,16 @@ document.addEventListener("DOMContentLoaded", function () {
   async function switchToSession(newSessionId) {
     if (newSessionId === sessionId) return; // Already on this session
 
+    console.log(`Switching from session ${sessionId} to ${newSessionId}`);
+
+    // Stop any ongoing streaming before switching sessions
+    if (isStreaming) {
+      await stopAudioStreaming();
+    }
+
+    // Reset audio playback system for new session
+    resetAudioPlaybackForNewSession();
+
     // Update session ID
     sessionId = newSessionId;
     
@@ -1641,12 +2060,15 @@ document.addEventListener("DOMContentLoaded", function () {
     // Disconnect current WebSocket if connected and reconnect with new session
     if (audioStreamSocket && audioStreamSocket.readyState === WebSocket.OPEN) {
       audioStreamSocket.close();
-      // Small delay before reconnecting
+      // Small delay before updating status
       setTimeout(() => {
         // Don't auto-reconnect, let user click to start streaming
         updateConnectionStatus('disconnected');
+        console.log(`Session switched to ${sessionId}, audio system ready`);
       }, 100);
     }
+
+    console.log(`Successfully switched to session ${sessionId}`);
   }
 
   /**

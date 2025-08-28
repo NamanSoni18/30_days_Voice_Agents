@@ -20,8 +20,9 @@ class MurfWebSocketService:
         self.ws_url = "wss://api.murf.ai/v1/speech/stream-input"
         self.websocket = None
         self.is_connected = False
-        # Use a static context_id as requested to avoid context limit exceeded errors
-        self.static_context_id = "voice_agent_context_static"
+        # Use session-specific context IDs to avoid context limit exceeded errors
+        self.current_context_id = None
+        self.active_contexts = set()  # Track active contexts
         # Add a lock to prevent concurrent recv() calls
         self._recv_lock = asyncio.Lock()
         self._connecting = False
@@ -53,9 +54,19 @@ class MurfWebSocketService:
         finally:
             self._connecting = False
     
-    async def _send_voice_config(self):
+    async def _send_voice_config(self, context_id: str = None):
         """Send voice configuration to Murf WebSocket"""
         try:
+            if context_id is None:
+                context_id = f"voice_agent_context_{uuid.uuid4().hex[:8]}"
+            
+            # Clear any existing context first if we have one
+            if self.current_context_id and self.current_context_id in self.active_contexts:
+                await self._clear_specific_context(self.current_context_id)
+            
+            self.current_context_id = context_id
+            self.active_contexts.add(context_id)
+            
             voice_config_msg = {
                 "voice_config": {
                     "voiceId": self.voice_id,
@@ -64,9 +75,9 @@ class MurfWebSocketService:
                     "pitch": 0,
                     "variation": 1
                 },
-                "context_id": self.static_context_id
+                "context_id": context_id
             }
-            logger.info(f"Sending voice config: {voice_config_msg}")
+            logger.info(f"Sending voice config with context_id: {context_id}")
             await self.websocket.send(json.dumps(voice_config_msg))
             
             # Wait for voice config acknowledgment with recv lock
@@ -75,6 +86,16 @@ class MurfWebSocketService:
                     response = await asyncio.wait_for(self.websocket.recv(), timeout=10.0)
                     data = json.loads(response)
                     logger.info(f"Voice config response: {data}")
+                    
+                    # Check for context limit exceeded error
+                    if "error" in data and "Exceeded Active context limit" in data["error"]:
+                        logger.warning(f"Context limit exceeded for {context_id}, clearing all contexts and retrying")
+                        await self._clear_all_contexts()
+                        # Retry with a new context ID
+                        new_context_id = f"voice_agent_context_{uuid.uuid4().hex[:8]}"
+                        await self._send_voice_config(new_context_id)
+                        return
+                        
                 except asyncio.TimeoutError:
                     logger.warning("Timeout waiting for voice config acknowledgment")
                     # Don't raise error, continue anyway
@@ -114,7 +135,7 @@ class MurfWebSocketService:
         except Exception as e:
             logger.error(f"Error disconnecting from Murf WebSocket: {str(e)}")
     
-    async def stream_text_to_audio(self, text_stream: AsyncGenerator[str, None]) -> AsyncGenerator[dict, None]:
+    async def stream_text_to_audio(self, text_stream: AsyncGenerator[str, None], session_id: str = None) -> AsyncGenerator[dict, None]:
         """
         Stream text chunks to Murf and yield base64 audio responses
         """
@@ -122,6 +143,17 @@ class MurfWebSocketService:
             raise Exception("WebSocket not connected. Call connect() first.")
         
         try:
+            # Generate a unique context ID for this session
+            context_id = f"voice_agent_context_{session_id or uuid.uuid4().hex[:8]}"
+            
+            # Clear any existing context and set up new one
+            if self.current_context_id and self.current_context_id != context_id:
+                logger.info(f"Switching context from {self.current_context_id} to {context_id}")
+                await self._clear_specific_context(self.current_context_id)
+            
+            # Ensure we have a fresh context for this session
+            await self._send_voice_config(context_id)
+            
             accumulated_text = ""
             chunk_count = 0
             
@@ -137,7 +169,7 @@ class MurfWebSocketService:
             
             # Send all text in one message (better for TTS quality)
             text_msg = {
-                "context_id": self.static_context_id,
+                "context_id": context_id,
                 "text": accumulated_text,
                 "end": False  # Don't end context, keep it alive for next request
             }
@@ -155,6 +187,10 @@ class MurfWebSocketService:
         except Exception as e:
             logger.error(f"Error in stream_text_to_audio: {str(e)}")
             raise
+    
+    def get_current_context_id(self) -> Optional[str]:
+        """Get the current context ID"""
+        return self.current_context_id
     
     async def _listen_for_audio(self) -> AsyncGenerator[dict, None]:
         audio_chunk_count = 0
@@ -247,16 +283,22 @@ class MurfWebSocketService:
     #         raise
     
     async def clear_context(self):
+        """Clear the current context - wrapper for backward compatibility"""
+        if self.current_context_id:
+            await self._clear_specific_context(self.current_context_id)
+    
+    async def _clear_specific_context(self, context_id: str):
+        """Clear a specific context"""
         try:
             if not self.websocket or not self.is_connected:
                 return  # No connection to clear
                 
             clear_msg = {
-                "context_id": self.static_context_id,
+                "context_id": context_id,
                 "clear": True
             }
             
-            logger.info("Clearing Murf context to avoid context limit errors")
+            logger.info(f"Clearing Murf context: {context_id}")
             await self.websocket.send(json.dumps(clear_msg))
             
             # Use the recv lock to prevent concurrency issues
@@ -264,10 +306,22 @@ class MurfWebSocketService:
                 try:
                     response = await asyncio.wait_for(self.websocket.recv(), timeout=3.0)
                     data = json.loads(response)
-                    logger.info(f"Context clear response: {data}")
+                    logger.info(f"Context clear response for {context_id}: {data}")
                 except asyncio.TimeoutError:
-                    logger.warning("Timeout waiting for context clear acknowledgment")
+                    logger.warning(f"Timeout waiting for context clear acknowledgment for {context_id}")
+            
+            # Remove from active contexts
+            self.active_contexts.discard(context_id)
+            if self.current_context_id == context_id:
+                self.current_context_id = None
             
         except Exception as e:
-            logger.error(f"Error clearing context: {str(e)}")
+            logger.error(f"Error clearing context {context_id}: {str(e)}")
             # Don't raise here - clearing context is best effort
+    
+    async def _clear_all_contexts(self):
+        """Clear all active contexts"""
+        for context_id in list(self.active_contexts):
+            await self._clear_specific_context(context_id)
+        self.active_contexts.clear()
+        self.current_context_id = None

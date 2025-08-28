@@ -7,6 +7,7 @@ import uuid
 import uvicorn
 import json
 import asyncio
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -54,39 +55,31 @@ web_search_service: WebSearchService = None
 
 
 def initialize_services() -> APIKeyConfig:
-    """Initialize all services with API keys"""
+    """Initialize all services with API keys - now requires user-provided keys"""
+    # Don't load from .env by default - require user to provide keys
     config = APIKeyConfig(
-        gemini_api_key=os.getenv("GEMINI_API_KEY"),
-        assemblyai_api_key=os.getenv("ASSEMBLYAI_API_KEY"),
-        murf_api_key=os.getenv("MURF_API_KEY"),
-        murf_voice_id=os.getenv("MURF_VOICE_ID", "en-IN-aarav"),
-        mongodb_url=os.getenv("MONGODB_URL"),
-        tavily_api_key=os.getenv("TAVILY_API_KEY")
+        gemini_api_key="",  # Empty by default
+        assemblyai_api_key="",  # Empty by default
+        murf_api_key="",  # Empty by default
+        murf_voice_id="en-IN-aarav",  # Default voice
+        mongodb_url=os.getenv("MONGODB_URL"),  # Database URL still from .env
+        tavily_api_key=""  # Empty by default
     )
     
     global stt_service, llm_service, tts_service, database_service, assemblyai_streaming_service, murf_websocket_service, web_search_service
-    if config.are_keys_valid:
-        stt_service = STTService(config.assemblyai_api_key)
-        llm_service = LLMService(config.gemini_api_key)
-        tts_service = TTSService(config.murf_api_key, config.murf_voice_id)
-        assemblyai_streaming_service = AssemblyAIStreamingService(config.assemblyai_api_key)
-        murf_websocket_service = MurfWebSocketService(config.murf_api_key, config.murf_voice_id)
-        logger.info("✅ All AI services initialized successfully")
-    else:
-        missing_keys = config.validate_keys()
-        logger.error(f"❌ Missing API keys: {missing_keys}")
     
-    # Initialize web search service if Tavily API key is available
-    if config.tavily_api_key:
-        try:
-            web_search_service = WebSearchService(config.tavily_api_key)
-            logger.info("✅ Web search service initialized successfully")
-        except Exception as e:
-            logger.warning(f"⚠️ Web search service initialization failed: {e}")
-    else:
-        logger.warning("⚠️ Tavily API key not found - web search feature will be disabled")
-    
+    # Only initialize database service - AI services require user keys
     database_service = DatabaseService(config.mongodb_url)
+    
+    # Set all AI services to None initially
+    stt_service = None
+    llm_service = None
+    tts_service = None
+    assemblyai_streaming_service = None
+    murf_websocket_service = None
+    web_search_service = None
+    
+    logger.info("🔒 Services initialized in locked mode - user must provide API keys")
     
     return config
 
@@ -379,8 +372,105 @@ async def search_web_endpoint(request: Request):
 #                 os.remove(temp_audio_path)
 #             except Exception as e:
 #                 logger.warning(f"Failed to delete temp file {temp_audio_path}: {str(e)}")
-        
 
+
+@app.post("/api/validate-keys")
+async def validate_api_keys(keys: APIKeyConfig):
+    """Validate user provided API keys"""
+    try:
+        validation_results = {}
+        
+        # Test Gemini API key
+        if keys.gemini_api_key:
+            try:
+                test_llm = LLMService(keys.gemini_api_key)
+                test_response = await test_llm.get_response("test", "developer", web_search_enabled=False)
+                validation_results["gemini"] = {"valid": True, "message": "Valid"}
+            except Exception as e:
+                validation_results["gemini"] = {"valid": False, "message": f"Invalid: {str(e)[:100]}"}
+        else:
+            validation_results["gemini"] = {"valid": False, "message": "API key required"}
+        
+        # Test AssemblyAI API key
+        if keys.assemblyai_api_key:
+            try:
+                test_stt = STTService(keys.assemblyai_api_key)
+                # Simple validation - just check if the key format is correct
+                validation_results["assemblyai"] = {"valid": True, "message": "Valid"}
+            except Exception as e:
+                validation_results["assemblyai"] = {"valid": False, "message": f"Invalid: {str(e)[:100]}"}
+        else:
+            validation_results["assemblyai"] = {"valid": False, "message": "API key required"}
+        
+        # Test MURF API key
+        if keys.murf_api_key:
+            try:
+                test_tts = TTSService(keys.murf_api_key, keys.murf_voice_id or "en-IN-aarav")
+                validation_results["murf"] = {"valid": True, "message": "Valid"}
+            except Exception as e:
+                validation_results["murf"] = {"valid": False, "message": f"Invalid: {str(e)[:100]}"}
+        else:
+            validation_results["murf"] = {"valid": False, "message": "API key required"}
+        
+        # Test Tavily API key (optional)
+        if keys.tavily_api_key:
+            try:
+                test_search = WebSearchService(keys.tavily_api_key)
+                validation_results["tavily"] = {"valid": True, "message": "Valid"}
+            except Exception as e:
+                validation_results["tavily"] = {"valid": False, "message": f"Invalid: {str(e)[:100]}"}
+        else:
+            validation_results["tavily"] = {"valid": True, "message": "Optional - not provided"}
+        
+        return {
+            "success": True,
+            "validation_results": validation_results,
+            "all_valid": all(result["valid"] for key, result in validation_results.items() if key != "tavily")
+        }
+        
+    except Exception as e:
+        logger.error(f"API key validation error: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Validation failed: {str(e)}",
+            "validation_results": {},
+            "all_valid": False
+        }
+
+
+def reinitialize_services_with_user_keys(user_keys: APIKeyConfig):
+    """Reinitialize services with user-provided API keys"""
+    global stt_service, llm_service, tts_service, assemblyai_streaming_service, murf_websocket_service, web_search_service
+    
+    try:
+        # Reinitialize with user keys
+        if user_keys.gemini_api_key:
+            llm_service = LLMService(user_keys.gemini_api_key)
+            logger.info("✅ LLM service reinitialized with user key")
+        
+        if user_keys.assemblyai_api_key:
+            stt_service = STTService(user_keys.assemblyai_api_key)
+            assemblyai_streaming_service = AssemblyAIStreamingService(user_keys.assemblyai_api_key)
+            logger.info("✅ STT and streaming services reinitialized with user key")
+        
+        if user_keys.murf_api_key:
+            voice_id = user_keys.murf_voice_id or "en-IN-aarav"
+            tts_service = TTSService(user_keys.murf_api_key, voice_id)
+            murf_websocket_service = MurfWebSocketService(user_keys.murf_api_key, voice_id)
+            logger.info("✅ TTS and WebSocket services reinitialized with user key")
+        
+        if user_keys.tavily_api_key:
+            web_search_service = WebSearchService(user_keys.tavily_api_key)
+            logger.info("✅ Web search service reinitialized with user key")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Service reinitialization error: {str(e)}")
+        return False
+
+
+        
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
@@ -428,12 +518,34 @@ session_locks = {}
 session_processing = {}
 # Track if persona changed during processing to allow force processing
 session_persona_changed = {}
+# Track session to context mapping for cleanup
+session_contexts = {}
 # Track web search enabled status per session
 session_web_search = {}
+
+async def cleanup_session_context(old_session_id: str, new_session_id: str):
+    """Clean up contexts when switching between sessions"""
+    global session_contexts, murf_websocket_service
+    
+    if not murf_websocket_service:
+        return
+    
+    # If switching to a different session, clear the old context
+    if old_session_id != new_session_id and old_session_id in session_contexts:
+        old_context = session_contexts[old_session_id]
+        try:
+            logger.info(f"🧹 Cleaning up context {old_context} for old session {old_session_id}")
+            await murf_websocket_service._clear_specific_context(old_context)
+            del session_contexts[old_session_id]
+        except Exception as e:
+            logger.error(f"Error cleaning up context for session {old_session_id}: {str(e)}")
+
 
 # Global function to handle LLM streaming (moved outside WebSocket handler to prevent duplicates)
 async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket, persona: str = "developer", force_processing: bool = False, web_search_enabled: bool = False):
     """Handle LLM streaming response and send to Murf WebSocket for TTS"""
+    
+    global session_processing, session_persona_changed, session_contexts
     
     logger.info(f"🎯 Starting LLM streaming for session {session_id}: '{user_message}' with persona: {persona}, web_search: {web_search_enabled}")
     
@@ -625,7 +737,8 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                 # Use asyncio.wait_for for better compatibility
                 async def process_tts():
                     nonlocal audio_chunk_count, total_audio_size
-                    async for audio_response in murf_websocket_service.stream_text_to_audio(text_generator):
+                    # Pass session_id to ensure unique context per session
+                    async for audio_response in murf_websocket_service.stream_text_to_audio(text_generator, session_id):
                         if audio_response["type"] == "audio_chunk":
                             audio_chunk_count += 1
                             total_audio_size += audio_response["chunk_size"]
@@ -704,6 +817,13 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
         await manager.send_personal_message(json.dumps(error_message), websocket)
     
     finally:
+        # Track the current context for this session
+        if murf_websocket_service:
+            current_context = murf_websocket_service.get_current_context_id()
+            if current_context:
+                session_contexts[session_id] = current_context
+                logger.info(f"🔗 Tracked context {current_context} for session {session_id}")
+        
         # Always clear the processing flag
         logger.info(f"🧹 About to clear processing flag for session {session_id}")
         session_processing[session_id] = False
@@ -745,6 +865,18 @@ async def audio_stream_websocket(websocket: WebSocket):
                         logger.info(f"Skipping short transcript: '{final_text}'")
                         return
                     
+                    # CHECK FOR API KEYS BEFORE PROCESSING
+                    if not llm_service or not assemblyai_streaming_service or not murf_websocket_service:
+                        logger.warning("🔒 API keys not configured - cannot process transcript")
+                        error_message = {
+                            "type": "api_keys_required",
+                            "message": "Please configure your API keys in settings before using the voice agent",
+                            "transcript": final_text,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        await manager.send_personal_message(json.dumps(error_message), websocket)
+                        return
+                    
                     # Smart duplicate detection - catch variations of the same question
                     normalized_current = final_text.lower().strip('.,!?;: ')
                     normalized_last = last_processed_transcript.lower().strip('.,!?;: ')
@@ -754,7 +886,6 @@ async def audio_stream_websocket(websocket: WebSocket):
                     time_since_last = current_time - last_processing_time
                     
                     # Remove all punctuation and normalize spaces for better comparison
-                    import re
                     clean_current = re.sub(r'[^\w\s]', ' ', normalized_current)
                     clean_current = ' '.join(clean_current.split())  # Normalize whitespace
                     
@@ -883,7 +1014,10 @@ async def audio_stream_websocket(websocket: WebSocket):
                                     new_session_id = command_data.get("session_id")
                                     if new_session_id and new_session_id != session_id:
                                         logger.info(f"Updating session_id from {session_id} to {new_session_id}")
+                                        old_session_id = session_id
                                         session_id = new_session_id
+                                        # Clean up context for the old session
+                                        await cleanup_session_context(old_session_id, new_session_id)
                                         # Update audio filename with new session ID
                                         audio_filename = f"streamed_audio_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
                                         audio_filepath = os.path.join("streamed_audio", audio_filename)
@@ -949,6 +1083,102 @@ async def audio_stream_websocket(websocket: WebSocket):
                                         "timestamp": datetime.now().isoformat()
                                     }
                                     await manager.send_personal_message(json.dumps(web_search_response), websocket)
+                                    continue
+                                
+                                elif command_type == "api_keys_update":
+                                    # Handle API keys update from frontend
+                                    api_keys_data = command_data.get("api_keys", {})
+                                    
+                                    # Create APIKeyConfig from user data
+                                    user_config = APIKeyConfig(
+                                        gemini_api_key=api_keys_data.get("gemini_api_key", ""),
+                                        assemblyai_api_key=api_keys_data.get("assemblyai_api_key", ""),
+                                        murf_api_key=api_keys_data.get("murf_api_key", ""),
+                                        murf_voice_id=api_keys_data.get("murf_voice_id", "en-IN-aarav"),
+                                        tavily_api_key=api_keys_data.get("tavily_api_key", "")
+                                    )
+                                    
+                                    # Reinitialize services with user keys
+                                    success = reinitialize_services_with_user_keys(user_config)
+                                    
+                                    if success and assemblyai_streaming_service:
+                                        # Reinitialize the streaming service with the new callback
+                                        try:
+                                            await assemblyai_streaming_service.stop_streaming_transcription()
+                                            assemblyai_streaming_service.set_transcription_callback(transcription_callback)
+                                            
+                                            async def safe_websocket_callback(msg):
+                                                if is_websocket_active and manager.is_connected(websocket):
+                                                    return await manager.send_personal_message(json.dumps(msg), websocket)
+                                                return None
+                                            
+                                            await assemblyai_streaming_service.start_streaming_transcription(
+                                                websocket_callback=safe_websocket_callback
+                                            )
+                                            logger.info(f"✅ AssemblyAI streaming reinitialized for session {session_id}")
+                                        except Exception as streaming_error:
+                                            logger.error(f"Failed to reinitialize streaming: {streaming_error}")
+                                    
+                                    if success:
+                                        logger.info(f"✅ Services reinitialized with user API keys for session {session_id}")
+                                        response = {
+                                            "type": "api_keys_updated",
+                                            "success": True,
+                                            "message": "API keys updated successfully",
+                                            "streaming_ready": assemblyai_streaming_service is not None,
+                                            "timestamp": datetime.now().isoformat()
+                                        }
+                                    else:
+                                        logger.error(f"❌ Failed to reinitialize services with user API keys for session {session_id}")
+                                        response = {
+                                            "type": "api_keys_updated",
+                                            "success": False,
+                                            "message": "Failed to update API keys",
+                                            "streaming_ready": False,
+                                            "timestamp": datetime.now().isoformat()
+                                        }
+                                    
+                                    await manager.send_personal_message(json.dumps(response), websocket)
+                                    continue# Handle API keys update from user
+                                    try:
+                                        api_keys_data = command_data.get("api_keys", {})
+                                        user_keys = APIKeyConfig(
+                                            gemini_api_key=api_keys_data.get("gemini_api_key", ""),
+                                            assemblyai_api_key=api_keys_data.get("assemblyai_api_key", ""),
+                                            murf_api_key=api_keys_data.get("murf_api_key", ""),
+                                            murf_voice_id=api_keys_data.get("murf_voice_id", "en-IN-aarav"),
+                                            tavily_api_key=api_keys_data.get("tavily_api_key", ""),
+                                            mongodb_url=os.getenv("MONGODB_URL")  # Keep using env for MongoDB
+                                        )
+                                        
+                                        # Reinitialize services with user keys
+                                        success = reinitialize_services_with_user_keys(user_keys)
+                                        
+                                        if success:
+                                            logger.info("✅ Services reinitialized with user-provided API keys")
+                                            response_message = "API keys updated successfully"
+                                        else:
+                                            logger.warning("⚠️ Some services failed to reinitialize with user keys")
+                                            response_message = "API keys updated with some warnings"
+                                        
+                                        # Send confirmation back to client
+                                        api_keys_response = {
+                                            "type": "api_keys_updated",
+                                            "success": success,
+                                            "message": response_message,
+                                            "timestamp": datetime.now().isoformat()
+                                        }
+                                        await manager.send_personal_message(json.dumps(api_keys_response), websocket)
+                                        
+                                    except Exception as e:
+                                        logger.error(f"API keys update error: {str(e)}")
+                                        error_response = {
+                                            "type": "api_keys_error",
+                                            "success": False,
+                                            "message": f"Failed to update API keys: {str(e)}",
+                                            "timestamp": datetime.now().isoformat()
+                                        }
+                                        await manager.send_personal_message(json.dumps(error_response), websocket)
                                     continue
                         except json.JSONDecodeError:
                             # Not JSON, treat as regular command
