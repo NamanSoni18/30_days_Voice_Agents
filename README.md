@@ -1,56 +1,61 @@
-# 30 Days of Voice Agents - Challenge Project
+# 30 Days of Voice Agents - Modern Voice AI Assistant
 
-An advanced conversational AI voice agent built for the "30 Days of Voice Agents" coding challenge. This FastAPI-powered application provides real-time voice conversations with intelligent web search capabilities, supporting both file upload and live streaming modes.
+A sophisticated conversational AI voice agent built for the "30 Days of Voice Agents" coding challenge. This FastAPI-powered application provides real-time voice conversations with multiple AI personas, intelligent web search capabilities, and a modern responsive interface supporting both streaming and traditional interaction modes.
 
 ## 🚀 Features
 
 ### Core Functionality
-- **🎙️ Speech Recognition**: Real-time and file-based audio transcription using AssemblyAI
-- **🧠 AI Conversations**: Intelligent responses powered by Google Gemini AI
-- **🔊 Text-to-Speech**: High-quality voice synthesis using Murf AI
-- **🔍 Web Search Integration**: Real-time web search using Tavily API for up-to-date information
-- **💾 Session Management**: Persistent conversation history with MongoDB
-- **⚡ Real-time Processing**: Live audio streaming with instant response generation
+- **🎙️ Real-time Speech Recognition**: Live audio streaming with AssemblyAI Universal Streaming
+- **🧠 Multi-Persona AI Conversations**: Choose from Developer, Sosuke Aizen, Monkey D. Luffy, or Politician personas powered by Google Gemini
+- **🔊 Streaming Text-to-Speech**: High-quality voice synthesis with real-time audio streaming using Murf AI
+- **🔍 Intelligent Web Search**: Real-time web search using Tavily API with contextual integration
+- **💾 Persistent Session Management**: MongoDB-powered conversation history with session switching
+- **⚡ WebSocket Real-time Processing**: Instant audio processing and response generation
 
-### Interaction Modes
-- **🎵 Real-time Streaming Mode**: Live microphone input with instant AI responses
-- **🌐 WebSocket Communication**: Bidirectional real-time communication
-- **📱 Responsive Web Interface**: Modern, mobile-friendly user interface
+### Modern Interface Features
+- ** Contemporary UI**: Modern card-based interface with gradient backgrounds and animations
+- ** Persona Selection**: Interactive persona switcher with visual indicators
+- **💬 Dual Chat Interfaces**: Both modern streaming chat and legacy conversation history
+- **📱 Responsive Design**: Mobile-optimized interface that works across all devices
+- **🔄 Session Management**: Create new chats, switch between sessions, view conversation history
+- **⚙️ Settings Modal**: User-friendly API key configuration with validation
 
 ### Advanced Capabilities
-- **🔍 Intelligent Web Search**: AI can search the web for current information
+- **🔍 Toggle Web Search**: Enable/disable web search functionality per conversation
+- **🎵 Streaming Audio Playback**: Real-time audio chunk processing and playback
 - **💬 Context-Aware Conversations**: Maintains conversation context across sessions
-- **🎯 Error Handling**: Comprehensive fallback mechanisms for service failures
-- **📊 Real-time Status Updates**: Live connection and processing indicators
+- **🎯 Comprehensive Error Handling**: Graceful fallbacks for service failures
+- **📊 Live Status Updates**: Real-time connection and processing indicators
 - **🔄 Auto-retry Logic**: Robust error recovery and connection management
 
 ## 📁 Project Structure
 
 ```
-├── main.py                                 # FastAPI application with all endpoints and WebSocket handlers
+├── main.py                                 # FastAPI application with WebSocket streaming and all endpoints
 ├── requirements.txt                        # Python dependencies
 ├── voice_agent.log                        # Application logs
+├── .env                                   # Environment variables (API keys)
+├── .env.example                           # Example environment configuration
 ├── services/                              # Core service integrations
 │   ├── assemblyai_streaming_service.py   # Real-time speech recognition streaming
 │   ├── database_service.py               # MongoDB operations and session management
-│   ├── llm_service.py                     # Google Gemini AI integration
+│   ├── llm_service.py                     # Google Gemini AI with multi-persona support
 │   ├── murf_websocket_service.py          # Real-time text-to-speech streaming
-│   ├── stt_service.py                     # File-based speech-to-text processing
+│   ├── stt_service.py                     # Traditional file-based speech-to-text
 │   ├── tts_service.py                     # Traditional text-to-speech conversion
 │   └── web_search_service.py              # Tavily web search integration
 ├── models/
 │   └── schemas.py                         # Pydantic data models and validation schemas
 ├── static/
-│   ├── app.js                            # Frontend JavaScript with WebSocket handling
-│   └── style.css                         # Modern CSS styling
+│   ├── app.js                            # Modern frontend JavaScript with WebSocket handling
+│   └── style.css                         # Contemporary responsive CSS styling
 ├── templates/
-│   └── index.html                        # Main web interface
+│   └── index.html                        # Modern web interface with dual chat modes
 ├── utils/                                # Utility modules
 │   ├── constants.py                      # Error messages and application constants
-│   ├── json_utils.py                     # JSON processing utilities
 │   └── logging_config.py                 # Centralized logging configuration
 └── streamed_audio/                       # Storage for streamed audio sessions
-    ├── streamed_audio_*.wav              # Saved audio files from streaming
+    └── streamed_audio_*.wav              # Saved audio files from streaming sessions
 ```
 
 ## ⚙️ Setup Instructions
@@ -61,22 +66,17 @@ An advanced conversational AI voice agent built for the "30 Days of Voice Agents
 - **MongoDB** (optional - application includes in-memory fallback)
 - **Stable internet connection** for API services
 
-### 🔑 Required API Keys
-Create a `.env` file in the project root with the following configuration:
+### 🔑 API Keys Configuration
+You have **two options** for configuring API keys:
 
-```env
-# AI and Speech Services
-GEMINI_API_KEY=your_google_gemini_api_key
-ASSEMBLYAI_API_KEY=your_assemblyai_api_key
-MURF_API_KEY=your_murf_api_key
-MURF_VOICE_ID=en-IN-aarav
+**🎯 Recommended: In-App Configuration (No .env required)**
+- Launch the application and click the ⚙️ Settings button
+- Enter your API keys directly in the user-friendly modal
+- Keys are stored securely in your browser's localStorage
+- Real-time validation ensures your keys are working correctly
+- **No environment file setup needed!**
 
-# Web Search
-TAVILY_API_KEY=your_tavily_api_key
 
-# Database (Optional)
-MONGODB_URL=your_mongodb_connection_string
-```
 
 ### 🔧 API Key Setup Guide
 1. **Google Gemini API**: Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
@@ -95,59 +95,93 @@ cd "30 Days of Voice Agents"
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Create environment file
-# Copy the .env template above and add your API keys
-
-# Launch the application
+# Launch the application (no .env setup required!)
 python main.py
+
+# Alternative: Use uvicorn directly
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-The application will be available at: **http://127.0.0.1:8000**
+**📱 First Time Setup:**
+1. Open **http://127.0.0.1:8000** in your browser
+2. Click the ⚙️ **Settings** button in the interface
+3. Enter your API keys in the modal (see API Key Setup Guide below)
+4. Click **Save Settings** - you're ready to chat!
+
+**🔄 No .env file needed** - all configuration is done through the modern web interface!
+
+## 🎭 AI Personas
+
+Choose from four distinct AI personalities for varied conversation experiences:
+
+### 👨‍💻 Developer (Default)
+- **Personality**: Professional, logical, and helpful software developer
+- **Communication Style**: Clear, structured solutions with technical explanations
+- **Best For**: Coding questions, technical discussions, problem-solving
+
+### 👑 Sosuke Aizen (Bleach)
+- **Personality**: Calm, confident, and intellectually superior
+- **Communication Style**: Composed and slightly manipulative, as if everything is according to plan
+- **Best For**: Philosophical discussions, strategic thinking, complex analysis
+
+### ⚓ Monkey D. Luffy (One Piece)
+- **Personality**: Boundlessly energetic and optimistic
+- **Communication Style**: Simple-minded but determined, with infectious enthusiasm
+- **Best For**: Motivation, creativity, fun conversations, adventure planning
+
+### 🏛️ Politician
+- **Personality**: Charismatic and diplomatic
+- **Communication Style**: Persuasive speeches that inspire and unite people
+- **Best For**: Public speaking, diplomatic discussions, motivational content
 
 ## 🛠️ API Endpoints
 
 ### 🌐 Web Interface
-- `GET /` - Main application interface with voice interaction
+- `GET /` - Modern web application with dual-interface design
 
-### 💬 Voice Chat API
-- `GET /agent/chat/{session_id}/history` - Retrieve conversation history
+### 💬 Session & Chat Management
+- `GET /api/sessions` - Get all conversation sessions
+- `GET /agent/chat/{session_id}/history` - Retrieve specific session conversation history
 - `DELETE /agent/chat/{session_id}/history` - Clear session conversation history
 
 ### 🔍 Web Search API  
-- `POST /agent/search` - Perform web search queries
-- Returns real-time search results for AI context enhancement
+- `POST /api/web-search` - Perform intelligent web search queries
+- Returns contextual search results for AI enhancement
 
-### 🔌 WebSocket Endpoints
-- `ws://localhost:8000/ws/audio-stream` - Real-time audio streaming and processing
+### 🔌 Real-time Communication
+- `ws://localhost:8000/ws/audio-stream` - WebSocket for real-time audio streaming and processing
 
-### 🔧 System API
+### 🔧 System & Configuration
 - `GET /api/backend` - Backend health check and service status
+- `POST /api/validate-keys` - Validate user-provided API keys
 
 ## 🔄 How It Works
 
-### 📁 File Upload Mode
-1. **Audio Upload** → User selects and uploads an audio file
-2. **Speech Recognition** → AssemblyAI transcribes the audio to text
-3. **Web Search** → If needed, AI searches for current information using Tavily
-4. **AI Processing** → Google Gemini generates intelligent response
-5. **Text-to-Speech** → Murf AI converts response to natural speech
-6. **Storage** → Complete conversation saved to MongoDB
-7. **Response** → Audio and text response returned to user
+### 🎵 Real-time Streaming Mode (Primary)
+1. **WebSocket Connection** → Browser establishes secure real-time connection
+2. **Live Audio Capture** → Microphone streams audio directly to server via WebSocket
+3. **Real-time Transcription** → AssemblyAI Universal Streaming processes audio chunks instantly
+4. **Persona-Based AI Response** → Selected persona (Developer/Aizen/Luffy/Politician) generates contextual responses
+5. **Optional Web Search** → If enabled, Tavily API provides current web information
+6. **Streaming TTS** → Murf WebSocket streams high-quality audio response in real-time
+7. **Live Audio Playback** → Audio chunks play as they arrive for seamless experience
+8. **Instant Storage** → Complete conversation immediately persisted to MongoDB
+9. **UI Updates** → Real-time status updates and conversation display
 
-### 🎵 Real-time Streaming Mode
-1. **WebSocket Connection** → Browser establishes real-time connection
-2. **Live Audio Capture** → Microphone streams audio directly to server
-3. **Real-time Transcription** → AssemblyAI processes audio chunks instantly
-4. **Contextual AI Response** → Gemini generates responses with web search context
-5. **Streaming TTS** → Murf WebSocket streams audio response in real-time
-6. **Live Playback** → Audio chunks play as they arrive
-7. **Instant Storage** → Conversation immediately persisted to database
+### � Modern Interface Features
+1. **Dual Chat Modes** → Modern streaming chat + legacy conversation history view
+2. **Persona Selection** → Visual persona switcher with animated transitions
+3. **Session Management** → Create new chats, switch between existing sessions
+4. **Web Search Toggle** → Enable/disable web search per conversation
+5. **Settings Modal** → User-friendly API key configuration with real-time validation
+6. **Responsive Design** → Mobile-optimized interface that adapts to all screen sizes
 
 ### 🔍 Intelligent Web Search Integration
-- **Contextual Queries**: AI determines when web search is needed
-- **Real-time Results**: Tavily API provides current web information
-- **Enhanced Responses**: AI incorporates search results into conversational responses
-- **Source Attribution**: Search results properly cited in responses
+- **Contextual Queries**: AI determines when current information is needed
+- **Real-time Results**: Tavily API provides up-to-date web information
+- **Enhanced Responses**: AI incorporates search results into persona-appropriate responses
+- **Source Attribution**: Search results properly cited and referenced
+- **Toggle Control**: Users can enable/disable web search functionality per conversation
 
 ## ⚙️ Technical Configuration
 
@@ -191,8 +225,27 @@ MURF_VOICE_ID          # Voice selection (default: en-IN-aarav)
 - **Service Fallbacks**: Graceful degradation when external APIs fail
 - **Connection Retry**: Automatic retry logic for transient failures  
 - **Comprehensive Logging**: Detailed logs in `voice_agent.log`
-- **User-Friendly Messages**: Clear error communication to users
+- **User-Friendly Messages**: Clear error communication through modern UI
 - **Session Recovery**: Maintains state across connection interruptions
+- **API Key Validation**: Real-time validation of user-provided API keys
+- **Fallback Audio**: Text-to-speech fallback messages for error scenarios
+
+## 🎨 Interface Features
+
+### 🖥️ Modern Design Elements
+- **Gradient Backgrounds**: Contemporary visual design with animated effects
+- **Card-Based Layout**: Clean, organized interface components
+- **Responsive Grid**: Adapts seamlessly to desktop, tablet, and mobile
+- **Smooth Animations**: Engaging transitions and micro-interactions
+- **Real-time Indicators**: Live status updates and connection monitoring
+
+### 🎛️ User Controls
+- **Microphone Button**: Large, accessible voice activation control
+- **Persona Selector**: Visual dropdown with character icons and descriptions
+- **Web Search Toggle**: Easy enable/disable for web search functionality
+- **New Chat Button**: Quick session creation and management
+- **Settings Modal**: Comprehensive API key configuration interface
+- **Session History**: Browse and switch between conversation sessions
 
 ## 🔧 Troubleshooting
 
@@ -308,26 +361,32 @@ motor==3.3.2                  # MongoDB asynchronous driver
 - **CSS Grid & Flexbox** - Modern responsive layout
 - **Progressive Web App** features for mobile optimization
 
-## 🚀 Development & Deployment
+### 🚀 Development & Deployment
 
 ### 🔧 Development Mode
 ```bash
 # Run with auto-reload for development
 python main.py
 
+# Alternative: Use uvicorn directly with custom settings
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload --log-level info
+
 # The server automatically restarts on code changes
 # Access at: http://127.0.0.1:8000
 ```
 
 ### 📁 Project Architecture
-- **Modular Services**: All integrations are swappable and independent
+- **Modular Services**: All AI integrations are swappable and independent
 - **Async/Await**: Full asynchronous processing for optimal performance
-- **Type Safety**: Pydantic models for data validation and serialization
-- **Logging**: Centralized logging with configurable levels
-- **Error Recovery**: Comprehensive error handling with user feedback
+- **Type Safety**: Pydantic models for comprehensive data validation
+- **Clean Code**: Organized, production-ready codebase with minimal technical debt
+- **Real-time Communication**: WebSocket-based streaming for instant interactions
+- **Modern Frontend**: Vanilla JavaScript with contemporary UI patterns
 
-### 🧪 Testing & Quality
-- **Service Isolation**: Each service can be tested independently
-- **Mock Support**: Easy mocking of external API dependencies
-- **Logging Integration**: Detailed logging for debugging and monitoring
-- **Performance Monitoring**: Built-in metrics for response times and errors
+### 🎯 Key Features Implemented
+- **Multi-Persona AI**: Four distinct AI personalities with unique communication styles
+- **Real-time Audio**: WebSocket streaming for instant voice interactions
+- **Modern Interface**: Card-based responsive design with smooth animations
+- **Session Management**: Persistent conversations with easy session switching
+- **Flexible Configuration**: Both environment variables and in-app settings
+- **Comprehensive Error Handling**: Robust fallbacks and user feedback
