@@ -259,29 +259,6 @@ class MurfWebSocketService:
             logger.error(f"Error in _listen_for_audio (total chunks processed: {audio_chunk_count}): {str(e)}")
             raise
     
-    # async def send_single_text(self, text: str) -> AsyncGenerator[dict, None]:
-    #     if not self.is_connected:
-    #         raise Exception("WebSocket not connected. Call connect() first.")
-        
-    #     try:
-    #         # Send complete text in one message
-    #         text_msg = {
-    #             "context_id": self.static_context_id,
-    #             "text": text,
-    #             "end": True  # Close context immediately
-    #         }
-            
-    #         logger.info(f"Sending complete text: {text[:100]}...")
-    #         await self.websocket.send(json.dumps(text_msg))
-            
-    #         # Listen for audio responses
-    #         async for audio_response in self._listen_for_audio():
-    #             yield audio_response
-                
-    #     except Exception as e:
-    #         logger.error(f"Error in send_single_text: {str(e)}")
-    #         raise
-    
     async def clear_context(self):
         """Clear the current context - wrapper for backward compatibility"""
         if self.current_context_id:

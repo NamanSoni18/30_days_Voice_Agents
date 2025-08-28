@@ -66,13 +66,6 @@ class WebSearchService:
     def format_search_results_for_llm(self, search_results: List[Dict], show_urls: bool = False) -> str:
         """
         Format search results for inclusion in LLM prompt
-        
-        Args:
-            search_results (List[Dict]): List of search results
-            show_urls (bool): Whether to include URLs in the formatted output
-        
-        Returns:
-            str: Formatted search results for LLM context
         """
         if not search_results:
             return "No web search results found."
@@ -85,28 +78,6 @@ class WebSearchService:
             formatted_results += f"   Content: {result.get('snippet', 'No content available')}\n"
         
         return formatted_results
-    
-    def format_search_results_with_urls(self, search_results: List[Dict]) -> str:
-        """
-        Format search results with actual URLs for user display
-        
-        Args:
-            search_results (List[Dict]): List of search results
-        
-        Returns:
-            str: Formatted search results with actual URLs
-        """
-        if not search_results:
-            return ""
-        
-        # Create a sources list with actual URLs
-        sources_text = "📌 Sources:\n"
-        for i, result in enumerate(search_results, 1):
-            title = result.get('title', f'Source {i}')
-            url = result.get('url', 'No URL')
-            sources_text += f"{i}. {title}: {url}\n"
-        
-        return sources_text
     
     def is_configured(self) -> bool:
         """Check if web search service is properly configured"""

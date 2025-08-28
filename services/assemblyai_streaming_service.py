@@ -166,10 +166,8 @@ class AssemblyAIStreamingService:
     async def send_audio_chunk(self, audio_data: bytes):
         try:
             if self.client and self.is_streaming and self._active:
-                logger.debug(f"Sending {len(audio_data)} bytes to AssemblyAI Universal Streaming")
                 if len(audio_data) > 0:
                     self.client.stream(audio_data)
-                    logger.debug(f"Successfully sent {len(audio_data)} bytes to AssemblyAI")
                 else:
                     logger.warning("Empty audio chunk received")
                 return True

@@ -12,11 +12,9 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from models.schemas import (
-    VoiceChatResponse, 
     ChatHistoryResponse, 
     BackendStatusResponse,
     APIKeyConfig,
-    ErrorType,
     WebSearchResponse,
     WebSearchResult
 )
@@ -28,7 +26,7 @@ from services.assemblyai_streaming_service import AssemblyAIStreamingService
 from services.murf_websocket_service import MurfWebSocketService
 from services.web_search_service import WebSearchService
 from utils.logging_config import setup_logging, get_logger
-from utils.constants import get_fallback_message
+
 
 # Load environment variables
 load_dotenv()
@@ -267,111 +265,6 @@ async def search_web_endpoint(request: Request):
             results=[],
             error_message=str(e)
         )
-
-
-# @app.post("/agent/chat/{session_id}", response_model=VoiceChatResponse)
-# async def chat_with_agent(
-#     session_id: str = Path(..., description="Session ID"),
-#     audio: UploadFile = File(..., description="Audio file for voice input")
-# ):
-#     """Chat with the voice agent using audio input"""
-#     transcribed_text = ""
-#     response_text = ""
-#     audio_url = None
-#     temp_audio_path = None
-    
-#     try:
-#         # Validate services availability
-#         config = initialize_services()
-#         if not config.are_keys_valid:
-#             missing_keys = config.validate_keys()
-#             error_message = get_fallback_message(ErrorType.API_KEYS_MISSING)
-#             fallback_audio = await tts_service.generate_fallback_audio(error_message) if tts_service else None
-#             return VoiceChatResponse(
-#                 success=False,
-#                 message=error_message,
-#                 transcription="",
-#                 llm_response=error_message,
-#                 audio_url=fallback_audio,
-#                 session_id=session_id,
-#                 error_type=ErrorType.API_KEYS_MISSING
-#             )
-        
-#         # Process audio file
-#         audio_content = await audio.read()
-#         temp_audio_path = f"temp_audio_{session_id}_{uuid.uuid4().hex}.wav"
-        
-#         with open(temp_audio_path, "wb") as temp_file:
-#             temp_file.write(audio_content)
-        
-#         # Transcribe audio
-#         transcribed_text = await stt_service.transcribe_audio(temp_audio_path)
-        
-#         # Generate LLM response with chat history
-#         if not database_service:
-#             chat_history = []
-#             user_save_success = False
-#             assistant_save_success = False
-#         else:
-#             chat_history = await database_service.get_chat_history(session_id)
-            
-#             # Save user message to chat history
-#             user_save_success = await database_service.add_message_to_history(session_id, "user", transcribed_text)
-        
-#         response_text = await llm_service.generate_response(transcribed_text, chat_history)
-        
-#         if database_service:
-#             # Save assistant response to chat history
-#             assistant_save_success = await database_service.add_message_to_history(session_id, "assistant", response_text)
-        
-#         # Generate TTS audio
-#         audio_url = await tts_service.generate_audio(response_text, session_id)
-        
-#         return VoiceChatResponse(
-#             success=True,
-#             message="Voice chat processed successfully",
-#             transcription=transcribed_text,
-#             llm_response=response_text,
-#             audio_url=audio_url,
-#             session_id=session_id
-#         )
-        
-#     except Exception as e:
-#         logger.error(f"Error in chat_with_agent for session {session_id}: {str(e)}")
-        
-#         # Generate appropriate error response based on the stage where error occurred
-#         if not transcribed_text:
-#             error_type = ErrorType.STT_ERROR
-#             error_message = get_fallback_message(ErrorType.STT_ERROR)
-#         elif not response_text:
-#             error_type = ErrorType.LLM_ERROR
-#             error_message = get_fallback_message(ErrorType.LLM_ERROR)
-#         elif not audio_url:
-#             error_type = ErrorType.TTS_ERROR
-#             error_message = get_fallback_message(ErrorType.TTS_ERROR)
-#         else:
-#             error_type = ErrorType.GENERAL_ERROR
-#             error_message = get_fallback_message(ErrorType.GENERAL_ERROR)
-        
-#         fallback_audio = await tts_service.generate_fallback_audio(error_message) if tts_service else None
-        
-#         return VoiceChatResponse(
-#             success=False,
-#             message=error_message,
-#             transcription=transcribed_text,
-#             llm_response=response_text or error_message,
-#             audio_url=fallback_audio,
-#             session_id=session_id,
-#             error_type=error_type
-#         )
-    
-#     finally:
-#         # Clean up temporary file
-#         if temp_audio_path and os.path.exists(temp_audio_path):
-#             try:
-#                 os.remove(temp_audio_path)
-#             except Exception as e:
-#                 logger.warning(f"Failed to delete temp file {temp_audio_path}: {str(e)}")
 
 
 @app.post("/api/validate-keys")

@@ -1115,6 +1115,7 @@ body::before {
 .settings-modal .modal-content {
     max-width: 550px;
     width: 90%;
+    overflow-y: visible; /* Remove scrollbar from modal content for settings */
 }
 
 .settings-content {
@@ -1123,7 +1124,7 @@ body::before {
 }
 
 .settings-body {
-    max-height: 70vh;
+    max-height: 55vh;
     overflow-y: auto;
     padding: 25px;
 }
