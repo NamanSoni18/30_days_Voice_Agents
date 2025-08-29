@@ -908,7 +908,11 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       // Connect to WebSocket with session ID and timeout
-      const wsUrl = `ws://localhost:8000/ws/audio-stream?session_id=${sessionId}`;
+      // Determine WebSocket protocol based on environment
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const wsProtocol = isLocalhost ? 'ws' : 'wss';
+      const wsHost = isLocalhost ? `${window.location.hostname}:8000` : window.location.host;
+      const wsUrl = `${wsProtocol}://${wsHost}/ws/audio-stream?session_id=${sessionId}`;
       audioStreamSocket = new WebSocket(wsUrl);
 
       // Set a connection timeout
