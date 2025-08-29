@@ -47,8 +47,32 @@ class VoiceChatResponse(BaseModel):
 
 
 class BackendStatusResponse(BaseModel):
-    message: str = Field(..., description="Status message")
-    status: str = Field(..., description="Status code")
+    status: str = Field(..., description="Status of the backend")
+    services: Dict[str, bool] = Field(..., description="Status of individual services")
+    timestamp: str = Field(..., description="Timestamp of the status check")
+
+
+class SessionStatsResponse(BaseModel):
+    success: bool = Field(..., description="Whether the request was successful")
+    session_id: str = Field(..., description="Session ID")
+    message_count: int = Field(..., description="Total number of messages")
+    created_at: Optional[datetime] = Field(None, description="Session creation timestamp")
+    last_activity: Optional[datetime] = Field(None, description="Last activity timestamp")
+    total_user_messages: int = Field(..., description="Number of user messages")
+    total_assistant_messages: int = Field(..., description="Number of assistant messages")
+
+
+class UserSessionInfo(BaseModel):
+    session_id: str = Field(..., description="Session ID")
+    created_at: Optional[datetime] = Field(None, description="Session creation timestamp")
+    message_count: int = Field(..., description="Total number of messages")
+    last_activity: Optional[datetime] = Field(None, description="Last activity timestamp")
+
+
+class UserSessionsResponse(BaseModel):
+    success: bool = Field(..., description="Whether the request was successful")
+    sessions: List[UserSessionInfo] = Field(default_factory=list, description="List of user sessions")
+    total_sessions: int = Field(..., description="Total number of sessions")
 
 
 class APIKeyConfig(BaseModel):
@@ -57,6 +81,7 @@ class APIKeyConfig(BaseModel):
     murf_api_key: Optional[str] = None
     murf_voice_id: Optional[str] = None
     mongodb_url: Optional[str] = None
+    tavily_api_key: Optional[str] = None
 
     def validate_keys(self) -> List[str]:
         missing_keys = []
@@ -75,3 +100,16 @@ class APIKeyConfig(BaseModel):
     @property
     def are_keys_valid(self) -> bool:
         return len(self.validate_keys()) == 0
+
+
+class WebSearchResult(BaseModel):
+    title: str = Field(..., description="Title of the search result")
+    snippet: str = Field(..., description="Snippet/summary of the search result")
+    url: str = Field(..., description="URL of the search result")
+
+
+class WebSearchResponse(BaseModel):
+    success: bool = Field(..., description="Whether the web search was successful")
+    query: str = Field(..., description="The search query")
+    results: List[WebSearchResult] = Field(default_factory=list, description="List of search results")
+    error_message: Optional[str] = Field(None, description="Error message if search failed")

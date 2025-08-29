@@ -2,23 +2,29 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from typing import List, Dict, Optional
 from datetime import datetime
 import logging
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
-    def __init__(self, mongodb_url: str = "mongodb://localhost:27017"):
-        self.mongodb_url = mongodb_url
+    def __init__(self, mongodb_url: str = None):
+        self.mongodb_url = mongodb_url or os.getenv("MONGODB_URL")
         self.client = None
         self.db = None
         self.in_memory_store = {}
+        self.user_sessions = {}  # Track user sessions for better organization
     
     async def connect(self) -> bool:
         try:
             self.client = AsyncIOMotorClient(self.mongodb_url)
             self.db = self.client.voice_agents
             await self.client.admin.command('ping')
-            logger.info("✅ Connected to MongoDB successfully")
+            logger.info("[SUCCESS] Connected to MongoDB successfully")
             return True
         except Exception as e:
             logger.warning(f"⚠️  MongoDB connection failed: {e}")
@@ -27,7 +33,23 @@ class DatabaseService:
             self.db = None
             return False
     
+    def is_connected(self) -> bool:
+        """Check if database is connected"""
+        return self.db is not None
+    
+    async def test_connection(self) -> bool:
+        """Test database connection"""
+        if self.db is not None:
+            try:
+                await self.client.admin.command('ping')
+                return True
+            except Exception as e:
+                logger.error(f"Database connection test failed: {e}")
+                return False
+        return False
+    
     async def get_chat_history(self, session_id: str) -> List[Dict]:
+        """Get chat history for a session"""
         if self.db is not None:
             try:
                 chat_history = await self.db.chat_sessions.find_one({"session_id": session_id})
@@ -36,38 +58,172 @@ class DatabaseService:
                 return []
             except Exception as e:
                 logger.error(f"Failed to get chat history from MongoDB: {str(e)}")
-                return []
+                return self.in_memory_store.get(session_id, [])
         else:
             return self.in_memory_store.get(session_id, [])
     
     async def add_message_to_history(self, session_id: str, role: str, content: str) -> bool:
+        """Add a message to chat history with improved error handling"""
+        if not session_id or not role or not content:
+            logger.error(f"Invalid parameters for add_message_to_history: session_id={session_id}, role={role}, content_length={len(content) if content else 0}")
+            return False
+            
         message = {
             "role": role,
             "content": content,
             "timestamp": datetime.now()
         }
         
+        # Track user sessions for analytics
+        if session_id not in self.user_sessions:
+            self.user_sessions[session_id] = {
+                "created_at": datetime.now(),
+                "message_count": 0,
+                "last_activity": datetime.now()
+            }
+        
+        self.user_sessions[session_id]["message_count"] += 1
+        self.user_sessions[session_id]["last_activity"] = datetime.now()
+        
         if self.db is not None:
             try:
-                await self.db.chat_sessions.update_one(
+                # Update chat session with user session metadata
+                session_metadata = {
+                    "session_id": session_id,
+                    "created_at": self.user_sessions[session_id]["created_at"],
+                    "message_count": self.user_sessions[session_id]["message_count"],
+                    "last_activity": self.user_sessions[session_id]["last_activity"]
+                }
+                
+                result = await self.db.chat_sessions.update_one(
                     {"session_id": session_id},
                     {
                         "$push": {"messages": message},
-                        "$set": {"last_updated": datetime.now()}
+                        "$set": {
+                            "last_updated": datetime.now(),
+                            **session_metadata
+                        }
                     },
                     upsert=True
                 )
+                
+                if result.matched_count > 0 or result.upserted_id:
+                    logger.info(f"[SUCCESS] Message saved to MongoDB for session {session_id}: {role} - {content[:50]}...")
+                else:
+                    logger.warning(f"⚠️ MongoDB update didn't match any documents for session {session_id}")
+                    
                 return True
             except Exception as e:
-                logger.error(f"Failed to save message to MongoDB: {str(e)}")
+                logger.error(f"❌ Failed to save message to MongoDB: {str(e)}")
+                # Fallback to in-memory storage
                 if session_id not in self.in_memory_store:
                     self.in_memory_store[session_id] = []
                 self.in_memory_store[session_id].append(message)
+                logger.info(f"💾 Message saved to in-memory storage for session {session_id}: {role} - {content[:50]}...")
                 return True
         else:
+            # In-memory storage when MongoDB is not available
             if session_id not in self.in_memory_store:
                 self.in_memory_store[session_id] = []
             self.in_memory_store[session_id].append(message)
+            logger.info(f"💾 Message saved to in-memory storage for session {session_id}: {role} - {content[:50]}...")
+            return True
+    
+    async def get_all_sessions(self) -> List[Dict]:
+        """Get all chat sessions with metadata"""
+        sessions = []
+        
+        if self.db is not None:
+            try:
+                cursor = self.db.chat_sessions.find(
+                    {},
+                    {
+                        "session_id": 1,
+                        "created_at": 1,
+                        "last_activity": 1,
+                        "message_count": 1,
+                        "messages": {"$slice": 1}  # Get first message for preview
+                    }
+                ).sort("last_activity", -1)
+                
+                async for session in cursor:
+                    # Get first user message for preview
+                    preview_text = "New conversation"
+                    if session.get("messages") and len(session["messages"]) > 0:
+                        first_message = session["messages"][0]
+                        if first_message.get("role") == "user":
+                            preview_text = first_message.get("content", "")[:50]
+                        else:
+                            # If first message is not from user, look for first user message
+                            all_messages = await self.get_chat_history(session["session_id"])
+                            for msg in all_messages:
+                                if msg.get("role") == "user":
+                                    preview_text = msg.get("content", "")[:50]
+                                    break
+                    
+                    sessions.append({
+                        "session_id": session["session_id"],
+                        "created_at": session.get("created_at", datetime.now()),
+                        "last_activity": session.get("last_activity", datetime.now()),
+                        "message_count": session.get("message_count", 0),
+                        "preview": preview_text
+                    })
+                    
+            except Exception as e:
+                logger.error(f"Failed to get sessions from MongoDB: {str(e)}")
+                # Fallback to in-memory sessions
+                for session_id, session_data in self.user_sessions.items():
+                    messages = self.in_memory_store.get(session_id, [])
+                    preview_text = "New conversation"
+                    for msg in messages:
+                        if msg.get("role") == "user":
+                            preview_text = msg.get("content", "")[:50]
+                            break
+                    
+                    sessions.append({
+                        "session_id": session_id,
+                        "created_at": session_data.get("created_at", datetime.now()),
+                        "last_activity": session_data.get("last_activity", datetime.now()),
+                        "message_count": session_data.get("message_count", 0),
+                        "preview": preview_text
+                    })
+        else:
+            # In-memory storage
+            for session_id, session_data in self.user_sessions.items():
+                messages = self.in_memory_store.get(session_id, [])
+                preview_text = "New conversation"
+                for msg in messages:
+                    if msg.get("role") == "user":
+                        preview_text = msg.get("content", "")[:50]
+                        break
+                
+                sessions.append({
+                    "session_id": session_id,
+                    "created_at": session_data.get("created_at", datetime.now()),
+                    "last_activity": session_data.get("last_activity", datetime.now()),
+                    "message_count": session_data.get("message_count", 0),
+                    "preview": preview_text
+                })
+        
+        return sessions
+
+    async def clear_session_history(self, session_id: str) -> bool:
+        """Clear chat history for a specific session"""
+        if self.db is not None:
+            try:
+                result = await self.db.chat_sessions.delete_one({"session_id": session_id})
+                logger.info(f"Cleared chat history for session {session_id}")
+                return result.deleted_count > 0
+            except Exception as e:
+                logger.error(f"Failed to clear session history from MongoDB: {str(e)}")
+                if session_id in self.in_memory_store:
+                    del self.in_memory_store[session_id]
+                return True
+        else:
+            if session_id in self.in_memory_store:
+                del self.in_memory_store[session_id]
+            if session_id in self.user_sessions:
+                del self.user_sessions[session_id]
             return True
     
     async def close(self):
