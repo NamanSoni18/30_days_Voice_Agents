@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="30 Days of Voice Agents - FastAPI",
+    title="VoxMate - AI Voice Agent",
     description="A modern conversational AI voice agent with FastAPI backend",
     version="1.0.0"
 )
