@@ -239,7 +239,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }"></i>`;
     }
 
-    document.title = `Voice Agent - ${displayName}`;
+    document.title = `VoxMate - AI Voice Agent - ${displayName}`;
   }
 
   function addMessageToChat(content, isUser = false, isStreaming = false) {
@@ -347,7 +347,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <div class="welcome-avatar">
               <i class="fas fa-microphone-alt"></i>
             </div>
-            <h2>Welcome to AI Voice Agent</h2>
+            <h2>Welcome to VoxMate - AI Voice Agent</h2>
             <p>Start a conversation by clicking the microphone button below. I'll listen and respond in real-time!</p>
           </div>
         </div>
@@ -2622,7 +2622,7 @@ document.addEventListener("DOMContentLoaded", function () {
           <div class="welcome-avatar">
             <i class="fas fa-microphone-alt"></i>
           </div>
-          <h2>Welcome to AI Voice Agent</h2>
+          <h2>Welcome to VoxMate - AI Voice Agent</h2>
           <p>Start a conversation by clicking the microphone button below. I'll listen and respond in real-time!</p>
         </div>
       </div>
