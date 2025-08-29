@@ -221,6 +221,14 @@ MONGODB_URL            # Database connection (fallback: in-memory)
 MURF_VOICE_ID          # Voice selection (default: en-IN-aarav)
 ```
 
+### 🎵 Audio File Management
+- **Temporary Storage**: Audio files are now stored in the system's temporary directory
+- **Automatic Cleanup**: Files are automatically removed after playback completion
+- **Session Cleanup**: Temporary files are cleaned when switching sessions or closing the app
+- **Manual Cleanup**: Use `cleanup_console_logs.ps1` script for manual cleanup
+- **No Persistent Storage**: Audio files no longer accumulate in the `streamed_audio` folder
+- **Memory Efficient**: Reduced disk usage with automatic temporary file management
+
 ### 🛡️ Error Handling & Resilience
 - **Service Fallbacks**: Graceful degradation when external APIs fail
 - **Connection Retry**: Automatic retry logic for transient failures  

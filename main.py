@@ -8,6 +8,7 @@ import uvicorn
 import json
 import asyncio
 import re
+import tempfile
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -85,6 +86,9 @@ def initialize_services() -> APIKeyConfig:
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 Starting Voice Agent application...")
+    
+    # Clean up old temporary audio files from previous sessions
+    cleanup_old_temp_audio_files()
     
     config = initialize_services()
     if database_service:
@@ -434,6 +438,25 @@ async def cleanup_session_context(old_session_id: str, new_session_id: str):
             logger.error(f"Error cleaning up context for session {old_session_id}: {str(e)}")
 
 
+def cleanup_old_temp_audio_files():
+    """Clean up old temporary audio files that may have been left behind"""
+    try:
+        temp_dir = tempfile.gettempdir()
+        for filename in os.listdir(temp_dir):
+            if filename.startswith("voice_agent_") and filename.endswith(".wav"):
+                filepath = os.path.join(temp_dir, filename)
+                try:
+                    # Check if file is older than 1 hour
+                    file_age = datetime.now().timestamp() - os.path.getmtime(filepath)
+                    if file_age > 3600:  # 1 hour in seconds
+                        os.unlink(filepath)
+                        logger.info(f"🧹 Cleaned up old temporary audio file: {filename}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up old temp file {filename}: {str(e)}")
+    except Exception as e:
+        logger.warning(f"Failed to clean up temp directory: {str(e)}")
+
+
 # Global function to handle LLM streaming (moved outside WebSocket handler to prevent duplicates)
 async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket, persona: str = "developer", force_processing: bool = False, web_search_enabled: bool = False):
     """Handle LLM streaming response and send to Murf WebSocket for TTS"""
@@ -724,6 +747,17 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
         logger.info(f"📊 Current processing flags: {session_processing}")
 
 
+@app.post("/cleanup/temp-audio")
+async def cleanup_temp_audio():
+    """Manual cleanup endpoint for temporary audio files"""
+    try:
+        cleanup_old_temp_audio_files()
+        return {"success": True, "message": "Temporary audio files cleaned up successfully"}
+    except Exception as e:
+        logger.error(f"Failed to cleanup temp audio files: {str(e)}")
+        return {"success": False, "message": f"Failed to cleanup: {str(e)}"}
+
+
 @app.websocket("/ws/audio-stream")
 async def audio_stream_websocket(websocket: WebSocket):
     await manager.connect(websocket)
@@ -735,9 +769,11 @@ async def audio_stream_websocket(websocket: WebSocket):
     if not session_id:
         session_id = str(uuid.uuid4())
     
-    audio_filename = f"streamed_audio_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
-    audio_filepath = os.path.join("streamed_audio", audio_filename)
-    os.makedirs("streamed_audio", exist_ok=True)
+    # Use temporary file instead of saving to streamed_audio folder
+    temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{session_id}.wav", prefix="voice_agent_")
+    audio_filepath = temp_audio_file.name
+    audio_filename = os.path.basename(audio_filepath)
+    temp_audio_file.close()  # Close the file handle so we can open it for writing
     is_websocket_active = True
     last_processed_transcript = ""  # Track last processed transcript to prevent duplicates
     last_processing_time = 0  # Track when we last processed a transcript
@@ -911,9 +947,8 @@ async def audio_stream_websocket(websocket: WebSocket):
                                         session_id = new_session_id
                                         # Clean up context for the old session
                                         await cleanup_session_context(old_session_id, new_session_id)
-                                        # Update audio filename with new session ID
-                                        audio_filename = f"streamed_audio_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
-                                        audio_filepath = os.path.join("streamed_audio", audio_filename)
+                                        # Note: Keep using the same temporary file for this session
+                                        # as it's still the same audio stream, just with updated session ID
                                     
                                     # Update persona if provided from frontend
                                     new_persona = command_data.get("persona")
@@ -1155,6 +1190,14 @@ async def audio_stream_websocket(websocket: WebSocket):
         is_websocket_active = False
         if assemblyai_streaming_service:
             await assemblyai_streaming_service.stop_streaming_transcription()
+        
+        # Clean up temporary audio file
+        try:
+            if os.path.exists(audio_filepath):
+                os.unlink(audio_filepath)
+                logger.info(f"🧹 Cleaned up temporary audio file: {audio_filename}")
+        except Exception as e:
+            logger.warning(f"Failed to clean up temporary audio file {audio_filename}: {str(e)}")
 
 
 if __name__ == "__main__":

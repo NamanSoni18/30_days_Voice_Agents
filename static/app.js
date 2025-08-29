@@ -41,6 +41,9 @@ document.addEventListener("DOMContentLoaded", function () {
   let isPlaying = false;
   let wavHeaderSet = true;
   const SAMPLE_RATE = 44100;
+  let audioBuffer = []; // Additional buffer for smoother playback
+  let isBuffering = false;
+  let minBufferSize = 2; // Minimum chunks to buffer before starting playback (reduced for lower latency)
 
   const audioStreamBtn = document.getElementById("audioStreamBtn");
   const audioStreamStatus = document.getElementById("audioStreamStatus");
@@ -54,6 +57,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Load all sessions on startup
   loadAllSessions();
+
+  // Add cleanup when page is closed or refreshed
+  window.addEventListener('beforeunload', function(event) {
+    // Clean up temporary audio files when page is closing
+    cleanupTempAudioFiles();
+    
+    // Stop any active audio streaming
+    if (isStreaming) {
+      stopAudioStreaming();
+    }
+  });
 
   // Event listeners for new UI
   if (newChatBtn) {
@@ -1599,10 +1613,72 @@ document.addEventListener("DOMContentLoaded", function () {
           updatePlaybackStatus("Audio streaming complete!");
           setTimeout(() => {
             hideAudioPlaybackIndicator();
+            // Clean up temporary audio files after playback is complete
+            cleanupTempAudioFiles();
           }, 2000);
         }
       }, 1000);
     }
+  }
+
+  // Function to clean up temporary audio files
+  async function cleanupTempAudioFiles() {
+    try {
+      const response = await fetch('/cleanup/temp-audio', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          console.log('🧹 Temporary audio files cleaned up successfully');
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to cleanup temporary audio files:', error);
+    }
+  }
+
+  // Function to handle audio recovery when glitches occur
+  function recoverAudioPlayback() {
+    console.log("🔧 Attempting audio playback recovery...");
+    
+    // Stop current playback
+    isPlaying = false;
+    isBuffering = false;
+    
+    // Reset audio context
+    if (audioContext && audioContext.state !== "closed") {
+      try {
+        audioContext.close();
+      } catch (e) {
+        console.warn("Error closing audio context:", e);
+      }
+    }
+    
+    audioContext = null;
+    
+    // Wait a moment then reinitialize
+    setTimeout(() => {
+      if (audioChunks.length > 0 || audioBuffer.length > 0) {
+        console.log("🔄 Reinitializing audio playback...");
+        initializeAudioContext();
+        
+        // Combine any remaining chunks
+        if (audioBuffer.length > 0) {
+          audioChunks = [...audioBuffer, ...audioChunks];
+          audioBuffer = [];
+        }
+        
+        if (audioChunks.length > 0) {
+          isPlaying = true;
+          chunkPlay();
+        }
+      }
+    }, 100);
   }
 
   function displayLLMStreamingStart(userMessage) {
@@ -1785,8 +1861,21 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       // If audio context doesn't exist or is closed, create a new one
       if (!audioContext || audioContext.state === "closed") {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({
+          sampleRate: SAMPLE_RATE,
+          latencyHint: "interactive" // Optimize for low latency
+        });
         playheadTime = audioContext.currentTime;
+        
+        // Handle audio context state changes
+        audioContext.addEventListener('statechange', () => {
+          if (audioContext.state === 'suspended') {
+            // Try to resume if suspended
+            audioContext.resume().catch(err => {
+              console.warn('Failed to resume audio context:', err);
+            });
+          }
+        });
       }
 
       // If audio context is suspended, try to resume it
@@ -1798,6 +1887,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       return true;
     } catch (error) {
+      console.error("Failed to initialize audio context:", error);
       return false;
     }
   }
@@ -1821,15 +1911,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const view = new DataView(byteArray.buffer);
       const sampleCount = byteArray.length / 2; // 16-bit samples
+      
+      if (sampleCount === 0) {
+        return null;
+      }
+      
       const float32Array = new Float32Array(sampleCount);
 
       for (let i = 0; i < sampleCount; i++) {
         const int16 = view.getInt16(i * 2, true); // Little endian
-        float32Array[i] = int16 / 32768; // Convert to float32 range [-1, 1]
+        float32Array[i] = Math.max(-1, Math.min(1, int16 / 32768)); // Clamp and convert to float32 range [-1, 1]
       }
 
       return float32Array;
     } catch (error) {
+      console.error("Error converting base64 to PCM:", error);
       return null;
     }
   }
@@ -1849,7 +1945,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if (audioContext.state === "suspended") {
         audioContext.resume().catch((err) => {
-          // Audio context resume failed
+          console.warn("Audio context resume failed:", err);
         });
       }
 
@@ -1859,30 +1955,55 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const source = audioContext.createBufferSource();
         source.buffer = buffer;
-        source.connect(audioContext.destination);
+        
+        // Add a gain node for better audio control
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = 1.0;
+        source.connect(gainNode);
+        gainNode.connect(audioContext.destination);
 
         const now = audioContext.currentTime;
-        if (playheadTime < now) {
-          playheadTime = now + 0.05; // Add small delay to prevent audio gaps
+        // Better timing management to prevent gaps
+        if (playheadTime < now + 0.1) {
+          playheadTime = now + 0.1; // Small buffer to prevent immediate playback issues
         }
 
         source.start(playheadTime);
         playheadTime += buffer.duration;
 
+        // Add fade-in for smoother transitions
+        if (audioChunks.length === 0) {
+          gainNode.gain.setValueAtTime(0.8, playheadTime - buffer.duration);
+          gainNode.gain.linearRampToValueAtTime(1.0, playheadTime - buffer.duration + 0.05);
+        }
+
         updatePlaybackStatus(`Playing audio chunk (Session: ${sessionId})`);
 
-        // Continue playing remaining chunks
-        if (audioChunks.length > 0) {
-          chunkPlay();
-        } else {
-          isPlaying = false;
-          updatePlaybackStatus(
-            "Audio streaming paused - waiting for more chunks..."
-          );
-        }
+        // Schedule next chunk with better timing
+        const nextChunkDelay = Math.max(0, (buffer.duration * 1000) - 50); // Play next chunk 50ms before current ends
+        setTimeout(() => {
+          if (audioChunks.length > 0) {
+            chunkPlay();
+          } else {
+            isPlaying = false;
+            updatePlaybackStatus(
+              "Audio streaming paused - waiting for more chunks..."
+            );
+          }
+        }, nextChunkDelay);
+        
       } catch (error) {
+        console.error("Audio playback error:", error);
         isPlaying = false;
         hideAudioPlaybackIndicator();
+        
+        // Try to recover by restarting playback after a brief delay
+        if (audioChunks.length > 0) {
+          console.log("🔄 Attempting audio recovery...");
+          setTimeout(() => {
+            recoverAudioPlayback();
+          }, 200);
+        }
       }
     }
   }
@@ -1891,6 +2012,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       // Initialize audio context if not already done
       if (!initializeAudioContext()) {
+        console.error("Failed to initialize audio context");
         return;
       }
 
@@ -1900,36 +2022,73 @@ document.addEventListener("DOMContentLoaded", function () {
       // Convert base64 to PCM data
       const float32Array = base64ToPCMFloat32(base64Audio);
       if (!float32Array || float32Array.length === 0) {
+        console.warn("Invalid audio data received");
         return;
       }
 
-      // Add chunk to playback queue
-      audioChunks.push(float32Array);
-      // Start playback if not already playing
-      if (
-        !isPlaying &&
-        (playheadTime <= audioContext.currentTime + 0.1 ||
-          audioChunks.length >= 2)
-      ) {
-        isPlaying = true;
-        audioContext
-          .resume()
-          .then(() => {
-            chunkPlay();
-          })
-          .catch((err) => {
-            isPlaying = false;
-          });
+      // Add chunk to buffer for smoother playback
+      audioBuffer.push(float32Array);
+      
+      // Wait for minimum buffer before starting playback to prevent choppy audio
+      if (!isPlaying && !isBuffering) {
+        if (audioBuffer.length >= minBufferSize) {
+          // We have enough chunks buffered, start playing
+          isBuffering = false;
+          audioChunks = [...audioBuffer]; // Copy buffered chunks to playback queue
+          audioBuffer = []; // Clear buffer
+          
+          isPlaying = true;
+          audioContext
+            .resume()
+            .then(() => {
+              console.log("Starting audio playback with", audioChunks.length, "chunks");
+              chunkPlay();
+            })
+            .catch((err) => {
+              console.error("Failed to resume audio context:", err);
+              isPlaying = false;
+            });
+        } else {
+          // Still buffering
+          isBuffering = true;
+          console.log(`Buffering audio chunks: ${audioBuffer.length}/${minBufferSize}`);
+        }
+      } else if (isPlaying) {
+        // Already playing, add directly to playback queue
+        audioChunks.push(float32Array);
+      } else if (isBuffering) {
+        // Check if we have enough to start playing now
+        if (audioBuffer.length >= minBufferSize) {
+          isBuffering = false;
+          audioChunks = [...audioBuffer];
+          audioBuffer = [];
+          
+          isPlaying = true;
+          audioContext
+            .resume()
+            .then(() => {
+              console.log("Starting buffered audio playback");
+              chunkPlay();
+            })
+            .catch((err) => {
+              console.error("Failed to resume audio context:", err);
+              isPlaying = false;
+            });
+        }
       }
     } catch (error) {
+      console.error("Error in playAudioChunk:", error);
       isPlaying = false;
+      isBuffering = false;
       hideAudioPlaybackIndicator();
     }
   }
 
   function resetAudioPlayback() {
     audioChunks = [];
+    audioBuffer = [];
     isPlaying = false;
+    isBuffering = false;
     wavHeaderSet = true;
 
     if (audioContext) {
@@ -1966,8 +2125,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // Reset all audio playback variables to ensure clean state
     audioContext = null;
     audioChunks = [];
+    audioBuffer = [];
     playheadTime = 0;
     isPlaying = false;
+    isBuffering = false;
     wavHeaderSet = true; // Reset WAV header flag for new session
 
     // Hide any audio playback indicators
@@ -1984,6 +2145,9 @@ document.addEventListener("DOMContentLoaded", function () {
     if (llmArea) {
       llmArea.remove();
     }
+
+    // Clean up temporary audio files when switching sessions
+    cleanupTempAudioFiles();
   }
 
   /**
