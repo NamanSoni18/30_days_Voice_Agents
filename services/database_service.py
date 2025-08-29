@@ -24,7 +24,7 @@ class DatabaseService:
             self.client = AsyncIOMotorClient(self.mongodb_url)
             self.db = self.client.voice_agents
             await self.client.admin.command('ping')
-            logger.info("✅ Connected to MongoDB successfully")
+            logger.info("[SUCCESS] Connected to MongoDB successfully")
             return True
         except Exception as e:
             logger.warning(f"⚠️  MongoDB connection failed: {e}")
@@ -108,7 +108,7 @@ class DatabaseService:
                 )
                 
                 if result.matched_count > 0 or result.upserted_id:
-                    logger.info(f"✅ Message saved to MongoDB for session {session_id}: {role} - {content[:50]}...")
+                    logger.info(f"[SUCCESS] Message saved to MongoDB for session {session_id}: {role} - {content[:50]}...")
                 else:
                     logger.warning(f"⚠️ MongoDB update didn't match any documents for session {session_id}")
                     

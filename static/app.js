@@ -44,6 +44,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let audioBuffer = []; // Additional buffer for smoother playback
   let isBuffering = false;
   let minBufferSize = 2; // Minimum chunks to buffer before starting playback (reduced for lower latency)
+  let currentAudioElement = null; // Track currently playing HTML5 Audio element
 
   const audioStreamBtn = document.getElementById("audioStreamBtn");
   const audioStreamStatus = document.getElementById("audioStreamStatus");
@@ -66,6 +67,17 @@ document.addEventListener("DOMContentLoaded", function () {
     // Stop any active audio streaming
     if (isStreaming) {
       stopAudioStreaming();
+    }
+
+    // Stop any currently playing HTML5 Audio element
+    if (currentAudioElement) {
+      try {
+        currentAudioElement.pause();
+        currentAudioElement.currentTime = 0;
+        console.log("🛑 Stopped HTML5 audio on page unload");
+      } catch (error) {
+        console.warn("Error stopping audio on page unload:", error);
+      }
     }
   });
 
@@ -1044,6 +1056,8 @@ document.addEventListener("DOMContentLoaded", function () {
           updateAssistantResponseInChatHistory(data.chunk);
         } else if (data.type === "tts_streaming_start") {
           updateStreamingStatus(`🎵 ${data.message}`, "info");
+          // Stop any previous audio before starting new TTS
+          stopAllAudioPlayback();
           displayTTSStreamingStart();
         } else if (data.type === "tts_audio_chunk") {
           // Handle audio base64 chunks from TTS
@@ -1068,6 +1082,18 @@ document.addEventListener("DOMContentLoaded", function () {
           updateStreamingStatus(`❌ ${data.message}`, "error");
         } else if (data.type === "tts_streaming_error") {
           updateStreamingStatus(`❌ ${data.message}`, "error");
+        } else if (data.type === "tts_streaming_timeout") {
+          updateStreamingStatus(`⏰ ${data.message}`, "warning");
+          // Reset audio playback state when TTS times out
+          resetAudioPlayback();
+        } else if (data.type === "tts_fallback_audio") {
+          updateStreamingStatus(`🔄 ${data.message}`, "info");
+          // Play fallback audio using HTML5 audio element
+          playFallbackAudio(data.audio_url);
+        } else if (data.type === "audio_stop") {
+          // Stop all current audio playback when new query starts
+          updateStreamingStatus(`🛑 ${data.message}`, "info");
+          stopAllAudioPlayback();
         } else if (data.type === "response_saved") {
           updateStreamingStatus(`💾 ${data.message}`, "success");
           // Response is already being updated in real-time, just mark as saved
@@ -1328,6 +1354,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
       updateConnectionStatus("disconnected", "Disconnected");
       updateStreamingStatus("Audio streaming stopped", "info");
+
+      // Stop any currently playing HTML5 Audio element
+      if (currentAudioElement) {
+        try {
+          currentAudioElement.pause();
+          currentAudioElement.currentTime = 0;
+          currentAudioElement = null;
+          console.log("🛑 Stopped HTML5 audio when stopping streaming");
+        } catch (error) {
+          console.warn("Error stopping HTML5 audio when stopping streaming:", error);
+        }
+      }
     } catch (error) {
       updateStreamingStatus(
         "Error stopping streaming: " + error.message,
@@ -1601,6 +1639,18 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function handleAudioChunk(audioData) {
+    // Stop any currently playing HTML5 Audio element before starting WebSocket streaming
+    if (currentAudioElement) {
+      try {
+        currentAudioElement.pause();
+        currentAudioElement.currentTime = 0;
+        currentAudioElement = null;
+        console.log("🛑 Stopped HTML5 audio before starting WebSocket streaming");
+      } catch (error) {
+        console.warn("Error stopping HTML5 audio:", error);
+      }
+    }
+
     // Play the audio chunk for streaming
     playAudioChunk(audioData.audio_base64);
 
@@ -1679,6 +1729,79 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
     }, 100);
+  }
+
+  // Function to play fallback audio when TTS streaming fails
+  function playFallbackAudio(audioUrl) {
+    try {
+      console.log("🔄 Playing fallback audio from URL:", audioUrl);
+
+      // Stop any currently playing HTML5 Audio element before starting new one
+      if (currentAudioElement) {
+        try {
+          currentAudioElement.pause();
+          currentAudioElement.currentTime = 0;
+          console.log("🛑 Stopped previous fallback audio before starting new one");
+        } catch (error) {
+          console.warn("Error stopping previous fallback audio:", error);
+        }
+      }
+
+      // Also reset WebSocket streaming audio to prevent overlap
+      resetAudioPlayback();
+
+      // Show audio playback indicator
+      showAudioPlaybackIndicator();
+      updatePlaybackStatus("Playing fallback audio...");
+
+      // Create HTML5 audio element
+      const audio = new Audio(audioUrl);
+      currentAudioElement = audio; // Track this audio element
+      audio.preload = 'auto';
+      
+      audio.addEventListener('loadstart', () => {
+        updatePlaybackStatus("Loading fallback audio...");
+      });
+      
+      audio.addEventListener('canplay', () => {
+        updatePlaybackStatus("Fallback audio ready, starting playback...");
+        audio.play().catch(error => {
+          console.error("Failed to play fallback audio:", error);
+          updateStreamingStatus("❌ Failed to play fallback audio", "error");
+          hideAudioPlaybackIndicator();
+        });
+      });
+      
+      audio.addEventListener('play', () => {
+        updatePlaybackStatus("Playing fallback audio...");
+      });
+      
+      audio.addEventListener('ended', () => {
+        updatePlaybackStatus("Fallback audio playback complete!");
+        currentAudioElement = null; // Clear reference when audio ends
+        setTimeout(() => {
+          hideAudioPlaybackIndicator();
+          // Clean up temporary audio files after playback
+          cleanupTempAudioFiles();
+        }, 2000);
+      });
+      
+      audio.addEventListener('error', (e) => {
+        console.error("Fallback audio error:", e);
+        updateStreamingStatus("❌ Error playing fallback audio", "error");
+        currentAudioElement = null; // Clear reference on error
+        hideAudioPlaybackIndicator();
+      });
+      
+      // Set volume and start loading
+      audio.volume = 1.0;
+      audio.load();
+      
+    } catch (error) {
+      console.error("Error setting up fallback audio:", error);
+      updateStreamingStatus("❌ Failed to setup fallback audio", "error");
+      hideAudioPlaybackIndicator();
+    }
   }
 
   function displayLLMStreamingStart(userMessage) {
@@ -1894,6 +2017,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function base64ToPCMFloat32(base64) {
     try {
+      if (!base64 || base64.length === 0) {
+        console.warn("Empty base64 audio data received");
+        return null;
+      }
+      
       let binary = atob(base64);
       const offset = wavHeaderSet ? 44 : 0; // Skip WAV header if present
 
@@ -1902,6 +2030,11 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       const length = binary.length - offset;
+      if (length <= 0) {
+        console.warn("Invalid audio data length after offset");
+        return null;
+      }
+      
       const buffer = new ArrayBuffer(length);
       const byteArray = new Uint8Array(buffer);
 
@@ -1913,6 +2046,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const sampleCount = byteArray.length / 2; // 16-bit samples
       
       if (sampleCount === 0) {
+        console.warn("No audio samples found");
         return null;
       }
       
@@ -2084,6 +2218,48 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  /**
+   * Stop all audio playback immediately (both WebSocket streaming and HTML5 audio)
+   * This is called when a new query starts to prevent overlapping audio
+   */
+  function stopAllAudioPlayback() {
+    console.log("🛑 Stopping all audio playback for new query");
+    
+    // Stop WebSocket streaming audio
+    resetAudioPlayback();
+    
+    // Stop any currently playing HTML5 Audio element
+    if (currentAudioElement) {
+      try {
+        currentAudioElement.pause();
+        currentAudioElement.currentTime = 0;
+        currentAudioElement = null;
+        console.log("🛑 Stopped HTML5 audio playback");
+      } catch (error) {
+        console.warn("Error stopping HTML5 audio:", error);
+      }
+    }
+    
+    // Stop and close audio context completely
+    if (audioContext && audioContext.state !== "closed") {
+      try {
+        audioContext.suspend().then(() => {
+          if (audioContext && audioContext.state !== "closed") {
+            audioContext.close();
+          }
+        }).catch(err => console.warn("Error closing audio context:", err));
+        audioContext = null;
+      } catch (error) {
+        console.warn("Error stopping audio context:", error);
+      }
+    }
+    
+    // Hide any audio indicators
+    hideAudioPlaybackIndicator();
+    
+    console.log("✅ All audio playback stopped successfully");
+  }
+
   function resetAudioPlayback() {
     audioChunks = [];
     audioBuffer = [];
@@ -2093,6 +2269,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (audioContext) {
       playheadTime = audioContext.currentTime;
+    }
+
+    // Stop any currently playing HTML5 Audio element
+    if (currentAudioElement) {
+      try {
+        currentAudioElement.pause();
+        currentAudioElement.currentTime = 0;
+        currentAudioElement = null;
+        console.log("🛑 Stopped previous HTML5 audio playback");
+      } catch (error) {
+        console.warn("Error stopping previous audio:", error);
+      }
     }
 
     hideAudioPlaybackIndicator();
@@ -2130,6 +2318,18 @@ document.addEventListener("DOMContentLoaded", function () {
     isPlaying = false;
     isBuffering = false;
     wavHeaderSet = true; // Reset WAV header flag for new session
+
+    // Stop any currently playing HTML5 Audio element
+    if (currentAudioElement) {
+      try {
+        currentAudioElement.pause();
+        currentAudioElement.currentTime = 0;
+        currentAudioElement = null;
+        console.log("🛑 Stopped HTML5 audio for new session");
+      } catch (error) {
+        console.warn("Error stopping HTML5 audio for new session:", error);
+      }
+    }
 
     // Hide any audio playback indicators
     hideAudioPlaybackIndicator();

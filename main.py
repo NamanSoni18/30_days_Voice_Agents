@@ -78,14 +78,14 @@ def initialize_services() -> APIKeyConfig:
     murf_websocket_service = None
     web_search_service = None
     
-    logger.info("🔒 Services initialized in locked mode - user must provide API keys")
+    logger.info("[LOCKED] Services initialized in locked mode - user must provide API keys")
     
     return config
 
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("🚀 Starting Voice Agent application...")
+    logger.info("[START] Starting Voice Agent application...")
     
     # Clean up old temporary audio files from previous sessions
     cleanup_old_temp_audio_files()
@@ -95,21 +95,21 @@ async def startup_event():
         try:
             db_connected = await database_service.connect()
             if db_connected:
-                logger.info("✅ Database service connected successfully")
+                logger.info("[SUCCESS] Database service connected successfully")
             else:
-                logger.warning("⚠️ Database service running in fallback mode")
+                logger.warning("[WARNING] Database service running in fallback mode")
         except Exception as e:
-            logger.error(f"❌ Database service initialization error: {e}")
+            logger.error(f"[ERROR] Database service initialization error: {e}")
     else:
-        logger.error("❌ Database service not initialized")
+        logger.error("[ERROR] Database service not initialized")
     
-    logger.info("✅ Application startup completed")
+    logger.info("[SUCCESS] Application startup completed")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on application shutdown"""
-    logger.info("🛑 Shutting down Voice Agent application...")
+    logger.info("[STOP] Shutting down Voice Agent application...")
     
     if database_service:
         await database_service.close()
@@ -118,7 +118,7 @@ async def shutdown_event():
     if murf_websocket_service and murf_websocket_service.is_connected:
         await murf_websocket_service.disconnect()
     
-    logger.info("✅ Application shutdown completed")
+    logger.info("[SUCCESS] Application shutdown completed")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -338,30 +338,55 @@ async def validate_api_keys(keys: APIKeyConfig):
 def reinitialize_services_with_user_keys(user_keys: APIKeyConfig):
     """Reinitialize services with user-provided API keys"""
     global stt_service, llm_service, tts_service, assemblyai_streaming_service, murf_websocket_service, web_search_service
-    
+
     try:
+        success_count = 0
+        total_services = 0
+
         # Reinitialize with user keys
         if user_keys.gemini_api_key:
-            llm_service = LLMService(user_keys.gemini_api_key)
-            logger.info("✅ LLM service reinitialized with user key")
-        
+            total_services += 1
+            try:
+                llm_service = LLMService(user_keys.gemini_api_key)
+                logger.info("[SUCCESS] LLM service reinitialized with user key")
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Failed to reinitialize LLM service: {str(e)}")
+
         if user_keys.assemblyai_api_key:
-            stt_service = STTService(user_keys.assemblyai_api_key)
-            assemblyai_streaming_service = AssemblyAIStreamingService(user_keys.assemblyai_api_key)
-            logger.info("✅ STT and streaming services reinitialized with user key")
-        
+            total_services += 1
+            try:
+                stt_service = STTService(user_keys.assemblyai_api_key)
+                assemblyai_streaming_service = AssemblyAIStreamingService(user_keys.assemblyai_api_key)
+                logger.info("[SUCCESS] STT and streaming services reinitialized with user key")
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Failed to reinitialize STT/Streaming services: {str(e)}")
+
         if user_keys.murf_api_key:
-            voice_id = user_keys.murf_voice_id or "en-IN-aarav"
-            tts_service = TTSService(user_keys.murf_api_key, voice_id)
-            murf_websocket_service = MurfWebSocketService(user_keys.murf_api_key, voice_id)
-            logger.info("✅ TTS and WebSocket services reinitialized with user key")
-        
+            total_services += 1
+            try:
+                voice_id = user_keys.murf_voice_id or "en-IN-aarav"
+                tts_service = TTSService(user_keys.murf_api_key, voice_id)
+                murf_websocket_service = MurfWebSocketService(user_keys.murf_api_key, voice_id)
+                # Note: Timeout configuration is handled internally by MurfWebSocketService
+                logger.info("[SUCCESS] TTS and WebSocket services reinitialized with user key")
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Failed to reinitialize TTS/WebSocket services: {str(e)}")
+
         if user_keys.tavily_api_key:
-            web_search_service = WebSearchService(user_keys.tavily_api_key)
-            logger.info("✅ Web search service reinitialized with user key")
-        
-        return True
-        
+            total_services += 1
+            try:
+                web_search_service = WebSearchService(user_keys.tavily_api_key)
+                logger.info("[SUCCESS] Web search service reinitialized with user key")
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Failed to reinitialize Web search service: {str(e)}")
+
+        logger.info(f"Service reinitialization: {success_count}/{total_services} services successful")
+        return success_count > 0  # Return True if at least one service was successfully reinitialized
+
     except Exception as e:
         logger.error(f"Service reinitialization error: {str(e)}")
         return False
@@ -419,6 +444,14 @@ session_persona_changed = {}
 session_contexts = {}
 # Track web search enabled status per session
 session_web_search = {}
+# Track last processed transcript per session for duplicate detection
+session_last_transcript = {}
+# Track last processing time per session
+session_last_time = {}
+# Track last processed persona per session
+session_last_persona = {}
+# Track active TTS tasks for cancellation
+active_tts_tasks = {}
 
 async def cleanup_session_context(old_session_id: str, new_session_id: str):
     """Clean up contexts when switching between sessions"""
@@ -431,7 +464,7 @@ async def cleanup_session_context(old_session_id: str, new_session_id: str):
     if old_session_id != new_session_id and old_session_id in session_contexts:
         old_context = session_contexts[old_session_id]
         try:
-            logger.info(f"🧹 Cleaning up context {old_context} for old session {old_session_id}")
+            logger.info(f"[CLEANUP] Cleaning up context {old_context} for old session {old_session_id}")
             await murf_websocket_service._clear_specific_context(old_context)
             del session_contexts[old_session_id]
         except Exception as e:
@@ -450,7 +483,7 @@ def cleanup_old_temp_audio_files():
                     file_age = datetime.now().timestamp() - os.path.getmtime(filepath)
                     if file_age > 3600:  # 1 hour in seconds
                         os.unlink(filepath)
-                        logger.info(f"🧹 Cleaned up old temporary audio file: {filename}")
+                        logger.info(f"[CLEANUP] Cleaned up old temporary audio file: {filename}")
                 except Exception as e:
                     logger.warning(f"Failed to clean up old temp file {filename}: {str(e)}")
     except Exception as e:
@@ -461,32 +494,56 @@ def cleanup_old_temp_audio_files():
 async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket, persona: str = "developer", force_processing: bool = False, web_search_enabled: bool = False):
     """Handle LLM streaming response and send to Murf WebSocket for TTS"""
     
-    global session_processing, session_persona_changed, session_contexts
+    global session_processing, session_persona_changed, session_contexts, session_last_transcript, session_last_time, session_last_persona
     
-    logger.info(f"🎯 Starting LLM streaming for session {session_id}: '{user_message}' with persona: {persona}, web_search: {web_search_enabled}")
+    logger.info(f"[TARGET] Starting LLM streaming for session {session_id}: '{user_message}' with persona: {persona}, web_search: {web_search_enabled}")
     
     # Check if we're already generating LLM response for this session
     if session_id not in session_locks:
         session_locks[session_id] = asyncio.Lock()
+    
+    # CANCEL ANY ACTIVE TTS TASKS FOR THIS SESSION BEFORE STARTING NEW ONE
+    if session_id in active_tts_tasks and not active_tts_tasks[session_id].done():
+        logger.info(f"[CANCEL] Cancelling active TTS task for session {session_id} before starting new query")
+        try:
+            active_tts_tasks[session_id].cancel()
+            await active_tts_tasks[session_id]
+        except asyncio.CancelledError:
+            logger.info(f"[CANCEL] Previous TTS task cancelled successfully for session {session_id}")
+        except Exception as e:
+            logger.warning(f"[CANCEL] Error cancelling previous TTS task: {e}")
+        finally:
+            if session_id in active_tts_tasks:
+                del active_tts_tasks[session_id]
+
+        # Send audio stop message to client to stop any playing audio
+        audio_stop_message = {
+            "type": "audio_stop",
+            "message": "Stopping previous audio for new query",
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat()
+        }
+        await manager.send_personal_message(json.dumps(audio_stop_message), websocket)
     
     # Skip processing flag check if force_processing is True (for persona changes)
     if not force_processing:
         # Check for persona changes that might override processing flag
         persona_change_detected = session_persona_changed.get(session_id, False)
         if persona_change_detected:
-            logger.info(f"🎭 Persona change detected for session {session_id}, allowing processing despite active session")
+            logger.info(f"[PERSONA] Persona change detected for session {session_id}, allowing processing despite active session")
             session_persona_changed[session_id] = False  # Reset the flag
             force_processing = True
         else:
             # Additional check for processing flag
-            if session_processing.get(session_id, False):
-                logger.warning(f"⚠️ Session {session_id} is already processing a request, skipping: '{user_message}' (processing flag: {session_processing.get(session_id)})")
-                return
-            
-            # Use a non-blocking check - if LLM is busy, skip this request  
+            current_processing_flag = session_processing.get(session_id, False)
+            logger.info(f"[CHECK] Processing flag check for session {session_id}: {current_processing_flag}, force_processing: {force_processing}")
+            if current_processing_flag:
+                logger.info(f"[INFO] Session {session_id} is already processing, but allowing new request: '{user_message}'")
+                # Don't return - allow the request to proceed, let duplicate detection handle conflicts
+
+            # Use a non-blocking check - if LLM is busy, still allow but log
             if session_locks[session_id].locked():
-                logger.warning(f"⚠️ Session {session_id} LLM is currently generating response, skipping: '{user_message}' (lock: {session_locks[session_id].locked()})")
-                return
+                logger.info(f"[INFO] Session {session_id} LLM is currently busy, but allowing new request: '{user_message}'")
     
     if force_processing:
         logger.info(f"🔄 Force processing enabled for session {session_id} - persona change detected")
@@ -497,6 +554,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
     # Set processing flag
     session_processing[session_id] = True
     logger.info(f"🔒 Set processing flag for session {session_id}: '{user_message}'")
+    logger.info(f"📊 Processing flags after setting: {session_processing}")
     
     # Initialize variables at function scope
     accumulated_response = ""
@@ -521,6 +579,41 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
         web_search_results = None
         search_results = None  # Store actual search results for sources
         
+        # Simple duplicate detection - only check exact matches within 2 seconds
+        # Get last processed transcript from session storage
+        last_processed_transcript = session_last_transcript.get(session_id, "")
+        last_processing_time = session_last_time.get(session_id, 0)
+        
+        # Get current time
+        current_time = datetime.now().timestamp()
+        time_since_last = current_time - last_processing_time
+        
+        # Clean the current message for comparison
+        normalized_current = user_message.lower().strip('.,!?;: ')
+        clean_current = re.sub(r'[^\w\s]', ' ', normalized_current)
+        clean_current = ' '.join(clean_current.split())  # Normalize whitespace
+        
+        # Clean the last message for comparison
+        normalized_last = last_processed_transcript.lower().strip('.,!?;: ')
+        clean_last = ''
+        if normalized_last:
+            clean_last = re.sub(r'[^\w\s]', ' ', normalized_last)
+            clean_last = ' '.join(clean_last.split())  # Normalize whitespace
+        
+        # Simple exact duplicate check
+        is_exact_duplicate = (
+            clean_current == clean_last and 
+            time_since_last < 2.0  # 2 seconds for exact matches
+        )
+        
+        logger.info(f"[SUCCESS] Duplicate check: '{clean_current}' vs '{clean_last}' - not duplicate, time: {time_since_last:.1f}s")
+        
+        # If this is a duplicate, clear the processing flag and return
+        if is_exact_duplicate:
+            logger.info(f"🚫 Exact duplicate detected, clearing processing flag for session {session_id}")
+            session_processing[session_id] = False
+            return
+        
         # Perform web search if enabled
         if web_search_enabled and web_search_service and web_search_service.is_configured():
             try:
@@ -544,7 +637,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                         show_urls=True  # Always show URLs to LLM
                     )
                     
-                    logger.info(f"✅ Web search completed, found {len(search_results)} results")
+                    logger.info(f"[SUCCESS] Web search completed, found {len(search_results)} results")
                     
                     # Send web search results to client
                     search_complete_message = {
@@ -582,6 +675,13 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
         }
         await manager.send_personal_message(json.dumps(start_message), websocket)
         
+        # Update session tracking variables for duplicate detection
+        current_time = datetime.now().timestamp()
+        session_last_transcript[session_id] = user_message
+        session_last_time[session_id] = current_time
+        session_last_persona[session_id] = persona
+        logger.info(f"📝 Updated session tracking for {session_id}: transcript='{user_message[:50]}...', persona='{persona}'")
+        
         # Only lock during LLM generation phase - not during TTS
         async with session_locks[session_id]:
             logger.info(f"🔒 Generating LLM response for session {session_id}: '{user_message}'")
@@ -614,7 +714,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                     try:
                         if database_service:
                             save_success = await database_service.add_message_to_history(session_id, "assistant", accumulated_response)
-                            logger.info(f"✅ Assistant response saved to database immediately after LLM completion")
+                            logger.info(f"[SUCCESS] Assistant response saved to database immediately after LLM completion")
                             
                             # Send notification that response is saved
                             save_notification = {
@@ -653,55 +753,176 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                 # Use asyncio.wait_for for better compatibility
                 async def process_tts():
                     nonlocal audio_chunk_count, total_audio_size
-                    # Pass session_id to ensure unique context per session
-                    async for audio_response in murf_websocket_service.stream_text_to_audio(text_generator, session_id):
-                        if audio_response["type"] == "audio_chunk":
-                            audio_chunk_count += 1
-                            total_audio_size += audio_response["chunk_size"]
+                    timeout_count = 0
+                    max_timeouts = 2  # Reduced from 3 to 2 for faster failure detection
+                    
+                    try:
+                        # Pass session_id to ensure unique context per session
+                        async for audio_response in murf_websocket_service.stream_text_to_audio(text_generator, session_id):
+                            if audio_response["type"] == "audio_chunk":
+                                audio_chunk_count += 1
+                                total_audio_size += audio_response["chunk_size"]
+                                
+                                # Send audio data to client
+                                audio_message = {
+                                    "type": "tts_audio_chunk",
+                                    "audio_base64": audio_response["audio_base64"],
+                                    "chunk_number": audio_response["chunk_number"],
+                                    "chunk_size": audio_response["chunk_size"],
+                                    "total_size": audio_response["total_size"],
+                                    "is_final": audio_response["is_final"],
+                                    "timestamp": audio_response["timestamp"]
+                                }
+                                await manager.send_personal_message(json.dumps(audio_message), websocket)
+                                
+                                # Check if this is the final chunk
+                                if audio_response["is_final"]:
+                                    break
                             
-                            # Send audio data to client
-                            audio_message = {
-                                "type": "tts_audio_chunk",
-                                "audio_base64": audio_response["audio_base64"],
-                                "chunk_number": audio_response["chunk_number"],
-                                "chunk_size": audio_response["chunk_size"],
-                                "total_size": audio_response["total_size"],
-                                "is_final": audio_response["is_final"],
-                                "timestamp": audio_response["timestamp"]
-                            }
-                            await manager.send_personal_message(json.dumps(audio_message), websocket)
+                            elif audio_response["type"] == "timeout":
+                                timeout_count += 1
+                                logger.warning(f"TTS timeout {timeout_count}/{max_timeouts} for session {session_id}")
+                                
+                                if timeout_count >= max_timeouts:
+                                    logger.error(f"Too many TTS timeouts ({timeout_count}) for session {session_id}")
+                                    raise Exception(f"TTS streaming failed after {max_timeouts} timeouts")
+                                
+                                # Send timeout status to client
+                                timeout_status = {
+                                    "type": "tts_timeout_warning",
+                                    "timeout_count": timeout_count,
+                                    "max_timeouts": max_timeouts,
+                                    "timestamp": audio_response["timestamp"]
+                                }
+                                await manager.send_personal_message(json.dumps(timeout_status), websocket)
                             
-                            # Check if this is the final chunk
-                            if audio_response["is_final"]:
-                                break
-                        
-                        elif audio_response["type"] == "status":
-                            # Send status updates to client
-                            status_message = {
-                                "type": "tts_status",
-                                "data": audio_response["data"],
-                                "timestamp": audio_response["timestamp"]
-                            }
-                            await manager.send_personal_message(json.dumps(status_message), websocket)
+                            elif audio_response["type"] == "status":
+                                # Send status updates to client
+                                status_message = {
+                                    "type": "tts_status",
+                                    "data": audio_response["data"],
+                                    "timestamp": audio_response["timestamp"]
+                                }
+                                await manager.send_personal_message(json.dumps(status_message), websocket)
+                            
+                            elif audio_response["type"] == "error":
+                                logger.error(f"TTS error for session {session_id}: {audio_response['error']}")
+                                raise Exception(f"TTS service error: {audio_response['error']}")
+                    
+                    except Exception as e:
+                        logger.error(f"TTS processing error for session {session_id}: {str(e)}")
+                        raise
                 
-                await asyncio.wait_for(process_tts(), timeout=30.0)
-                
+                # Create and track TTS task
+                tts_task = asyncio.create_task(process_tts())
+                active_tts_tasks[session_id] = tts_task
+
+                try:
+                    await asyncio.wait_for(tts_task, timeout=45.0)  # Reduced to 45 seconds for better responsiveness
+                finally:
+                    # Clean up the task reference
+                    if session_id in active_tts_tasks:
+                        del active_tts_tasks[session_id]
+
             except asyncio.TimeoutError:
-                logger.error(f"TTS streaming timed out for session {session_id}")
+                logger.error(f"TTS streaming timed out after 45s for session {session_id}")
+
+                # Cancel any ongoing TTS task for this session
+                if session_id in active_tts_tasks:
+                    logger.info(f"[CANCEL] Cancelling ongoing TTS task for session {session_id}")
+                    active_tts_tasks[session_id].cancel()
+                    try:
+                        await active_tts_tasks[session_id]
+                    except asyncio.CancelledError:
+                        logger.info(f"[CANCEL] TTS task cancelled successfully for session {session_id}")
+                    del active_tts_tasks[session_id]
+
+                # Send timeout notification to client
                 timeout_message = {
-                    "type": "tts_streaming_timeout",
-                    "message": "TTS streaming timed out - continuing without audio",
+                    "type": "tts_timeout",
+                    "message": "TTS streaming timed out, attempting fallback...",
+                    "session_id": session_id,
                     "timestamp": datetime.now().isoformat()
                 }
                 await manager.send_personal_message(json.dumps(timeout_message), websocket)
+
+                # Don't clear processing flag immediately - wait for fallback to complete
+                # This prevents new transcripts from being processed while fallback is running
+                logger.warning(f"[CLEANUP] TTS timeout - keeping processing flag set during fallback for session {session_id}")
+
+                # Try to generate fallback audio using traditional TTS
+                try:
+                    if tts_service and accumulated_response.strip():
+                        logger.info("Attempting fallback TTS generation...")
+                        fallback_audio_url = await tts_service.generate_speech(
+                            accumulated_response, 
+                            format="MP3"
+                        )
+                        
+                        if fallback_audio_url:
+                            fallback_message = {
+                                "type": "tts_fallback_audio",
+                                "audio_url": fallback_audio_url,
+                                "message": "Using fallback audio generation due to WebSocket timeout",
+                                "timestamp": datetime.now().isoformat()
+                            }
+                            await manager.send_personal_message(json.dumps(fallback_message), websocket)
+                            logger.info("[SUCCESS] Fallback audio generated successfully")
+                        else:
+                            raise Exception("Fallback TTS also failed")
+                    else:
+                        raise Exception("TTS service not available or empty response")
+
+                    # Clear processing flag after successful fallback
+                    logger.info(f"[CLEANUP] Clearing processing flag after successful fallback for session {session_id}")
+                    session_processing[session_id] = False
+
+                except Exception as fallback_error:
+                    logger.error(f"Fallback TTS also failed: {fallback_error}")
+                    timeout_message = {
+                        "type": "tts_streaming_timeout",
+                        "message": "TTS streaming timed out - continuing without audio",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    await manager.send_personal_message(json.dumps(timeout_message), websocket)
+
+                    # Clear processing flag even if fallback failed
+                    logger.info(f"[CLEANUP] Clearing processing flag after failed fallback for session {session_id}")
+                    session_processing[session_id] = False
         except Exception as e:
             logger.error(f"Error with Murf WebSocket streaming: {str(e)}")
-            error_message = {
-                "type": "tts_streaming_error",
-                "message": f"Error with Murf WebSocket: {str(e)}",
-                "timestamp": datetime.now().isoformat()
-            }
-            await manager.send_personal_message(json.dumps(error_message), websocket)
+            
+            # Try fallback TTS immediately when streaming fails
+            try:
+                if tts_service and accumulated_response.strip():
+                    logger.info("TTS streaming failed, attempting fallback TTS generation...")
+                    fallback_audio_url = await tts_service.generate_speech(
+                        accumulated_response, 
+                        format="MP3"
+                    )
+                    
+                    if fallback_audio_url:
+                        fallback_message = {
+                            "type": "tts_fallback_audio",
+                            "audio_url": fallback_audio_url,
+                            "message": "TTS streaming failed, using fallback audio generation",
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        await manager.send_personal_message(json.dumps(fallback_message), websocket)
+                        logger.info("[SUCCESS] Fallback audio generated successfully after streaming failure")
+                    else:
+                        raise Exception("Fallback TTS also failed")
+                else:
+                    raise Exception("TTS service not available or empty response")
+                    
+            except Exception as fallback_error:
+                logger.error(f"Fallback TTS also failed: {fallback_error}")
+                error_message = {
+                    "type": "tts_streaming_error",
+                    "message": f"Both streaming and fallback TTS failed: {str(e)}",
+                    "timestamp": datetime.now().isoformat()
+                }
+                await manager.send_personal_message(json.dumps(error_message), websocket)
         
         finally:
             # Don't disconnect from Murf WebSocket - keep it alive for next request
@@ -721,7 +942,7 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
         }
         await manager.send_personal_message(json.dumps(complete_message), websocket)
         
-        logger.info(f"✅ LLM streaming and TTS completed for session {session_id}. Ready for next request.")
+        logger.info(f"[SUCCESS] LLM streaming and TTS completed for session {session_id}. Ready for next request.")
         
     except Exception as e:
         logger.error(f"Error in LLM streaming: {str(e)}")
@@ -740,11 +961,16 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                 session_contexts[session_id] = current_context
                 logger.info(f"🔗 Tracked context {current_context} for session {session_id}")
         
-        # Always clear the processing flag
-        logger.info(f"🧹 About to clear processing flag for session {session_id}")
-        session_processing[session_id] = False
-        logger.info(f"🔓 Cleared processing flag for session {session_id}")
-        logger.info(f"📊 Current processing flags: {session_processing}")
+        # Always clear the processing flag - use try/except to ensure it happens
+        try:
+            logger.info(f"[CLEANUP] About to clear processing flag for session {session_id} (current state: {session_processing.get(session_id)})")
+            session_processing[session_id] = False
+            logger.info(f"🔓 Cleared processing flag for session {session_id}")
+            logger.info(f"📊 Current processing flags: {session_processing}")
+        except Exception as flag_error:
+            logger.error(f"❌ Error clearing processing flag for session {session_id}: {flag_error}")
+            # Force clear the flag
+            session_processing[session_id] = False
 
 
 @app.post("/cleanup/temp-audio")
@@ -756,6 +982,65 @@ async def cleanup_temp_audio():
     except Exception as e:
         logger.error(f"Failed to cleanup temp audio files: {str(e)}")
         return {"success": False, "message": f"Failed to cleanup: {str(e)}"}
+
+
+@app.get("/debug/websocket-status")
+async def get_websocket_status():
+    """Debug endpoint to check WebSocket connection status"""
+    try:
+        status = {
+            "murf_websocket": {
+                "connected": murf_websocket_service.is_connected if murf_websocket_service else False,
+                "current_context": murf_websocket_service.get_current_context_id() if murf_websocket_service else None,
+                "active_contexts": list(murf_websocket_service.active_contexts) if murf_websocket_service else []
+            },
+            "assemblyai_streaming": {
+                "connected": assemblyai_streaming_service.is_connected() if assemblyai_streaming_service else False
+            }
+        }
+        return {"success": True, "status": status}
+    except Exception as e:
+        logger.error(f"Failed to get WebSocket status: {str(e)}")
+        return {"success": False, "message": f"Failed to get status: {str(e)}"}
+
+
+@app.post("/debug/test-tts")
+async def test_tts(request: Request):
+    """Debug endpoint to test TTS functionality"""
+    try:
+        data = await request.json()
+        text = data.get("text", "Hello! This is a test of the TTS system.")
+        
+        if not murf_websocket_service:
+            return {"success": False, "message": "Murf WebSocket service not available"}
+        
+        # Test WebSocket connection
+        await murf_websocket_service.ensure_connected()
+        
+        # Create a simple text stream
+        async def simple_text_stream():
+            yield text
+        
+        # Test TTS streaming
+        audio_chunks = []
+        async for audio_response in murf_websocket_service.stream_text_to_audio(simple_text_stream()):
+            if audio_response.get("type") == "audio_chunk":
+                audio_chunks.append({
+                    "chunk_number": audio_response.get("chunk_number"),
+                    "chunk_size": audio_response.get("chunk_size"),
+                    "is_final": audio_response.get("is_final")
+                })
+        
+        return {
+            "success": True, 
+            "message": f"TTS test completed", 
+            "audio_chunks_received": len(audio_chunks),
+            "chunks_info": audio_chunks
+        }
+        
+    except Exception as e:
+        logger.error(f"TTS test failed: {str(e)}")
+        return {"success": False, "message": f"TTS test failed: {str(e)}"}
 
 
 @app.websocket("/ws/audio-stream")
@@ -776,7 +1061,7 @@ async def audio_stream_websocket(websocket: WebSocket):
     temp_audio_file.close()  # Close the file handle so we can open it for writing
     is_websocket_active = True
     last_processed_transcript = ""  # Track last processed transcript to prevent duplicates
-    last_processing_time = 0  # Track when we last processed a transcript
+    last_processing_time = datetime.now().timestamp()  # Initialize to current time to avoid huge time differences
     last_processed_persona = ""  # Track persona of last processed transcript
     current_persona = "developer"  # Default persona
     
@@ -785,15 +1070,16 @@ async def audio_stream_websocket(websocket: WebSocket):
         try:
             if is_websocket_active and manager.is_connected(websocket):
                 await manager.send_personal_message(json.dumps(transcript_data), websocket)
-                # Only show final transcriptions and trigger LLM streaming
+
+                # Only process final transcripts
                 if transcript_data.get("type") == "final_transcript":
                     final_text = transcript_data.get('text', '').strip()
-                    
-                    # Check if we have valid text
-                    if not final_text or len(final_text.strip()) < 3:
+
+                    # Skip if too short
+                    if len(final_text.strip()) < 3:
                         logger.info(f"Skipping short transcript: '{final_text}'")
                         return
-                    
+
                     # CHECK FOR API KEYS BEFORE PROCESSING
                     if not llm_service or not assemblyai_streaming_service or not murf_websocket_service:
                         logger.warning("🔒 API keys not configured - cannot process transcript")
@@ -805,99 +1091,48 @@ async def audio_stream_websocket(websocket: WebSocket):
                         }
                         await manager.send_personal_message(json.dumps(error_message), websocket)
                         return
-                    
-                    # Smart duplicate detection - catch variations of the same question
-                    normalized_current = final_text.lower().strip('.,!?;: ')
-                    normalized_last = last_processed_transcript.lower().strip('.,!?;: ')
-                    
-                    # Get current time
+
+                    # Quick duplicate check - be more strict to prevent double processing
                     current_time = datetime.now().timestamp()
                     time_since_last = current_time - last_processing_time
                     
-                    # Remove all punctuation and normalize spaces for better comparison
-                    clean_current = re.sub(r'[^\w\s]', ' ', normalized_current)
-                    clean_current = ' '.join(clean_current.split())  # Normalize whitespace
+                    # Normalize text for comparison (remove punctuation, case insensitive)
+                    normalized_current = re.sub(r'[^\w\s]', ' ', final_text.lower())
+                    normalized_current = ' '.join(normalized_current.split())  # Normalize whitespace
                     
-                    clean_last = ''
-                    if normalized_last:
-                        clean_last = re.sub(r'[^\w\s]', ' ', normalized_last)
-                        clean_last = ' '.join(clean_last.split())  # Normalize whitespace
+                    normalized_last = re.sub(r'[^\w\s]', ' ', last_processed_transcript.lower())
+                    normalized_last = ' '.join(normalized_last.split())
                     
-                    # Check for exact duplicates after cleaning - BUT allow if persona changed
-                    persona_changed = (current_persona != last_processed_persona)
-                    
-                    # Set the persona change flag for this session if persona changed
-                    if persona_changed:
-                        session_persona_changed[session_id] = True
-                        logger.info(f"🎭 Persona changed from '{last_processed_persona}' to '{current_persona}' - setting force processing flag")
-                    
-                    is_exact_duplicate = (
-                        clean_current == clean_last and 
-                        time_since_last < 5.0 and  # Further increased time window for exact matches
-                        current_persona == last_processed_persona  # Only consider duplicate if same persona
+                    # More strict duplicate detection - consider similar text within 5 seconds as duplicate
+                    is_duplicate = (
+                        normalized_current == normalized_last and 
+                        time_since_last < 5.0  # Increased from 1.0 to 5.0 seconds
                     )
-                    
-                    # Check for very similar questions (same meaning, different punctuation/capitalization)
-                    is_similar_duplicate = False
-                    if not is_exact_duplicate and clean_last and time_since_last < 8.0 and current_persona == last_processed_persona:  # Only check if same persona
-                        # Calculate word-level similarity
-                        current_words = set(clean_current.split())
-                        last_words = set(clean_last.split())
-                        if len(current_words) > 0 and len(last_words) > 0:
-                            # Use Jaccard similarity for better comparison
-                            similarity = len(current_words & last_words) / len(current_words | last_words)
-                            # More aggressive similarity threshold - if 60%+ similar, consider it a duplicate
-                            is_similar_duplicate = similarity >= 0.6 and time_since_last < 5.0
-                            
-                            # Additional check: if one is a subset of the other with high overlap
-                            if not is_similar_duplicate:
-                                min_words = min(len(current_words), len(last_words))
-                                overlap_ratio = len(current_words & last_words) / min_words if min_words > 0 else 0
-                                is_similar_duplicate = overlap_ratio >= 0.75 and time_since_last < 4.0  # More aggressive
-                            
-                            # Extra check for very short queries (like "who is X")
-                            if not is_similar_duplicate and len(current_words) <= 4 and len(last_words) <= 4:
-                                # For short queries, be even more aggressive
-                                is_similar_duplicate = similarity >= 0.5 and time_since_last < 6.0
-                    
-                    is_duplicate = is_exact_duplicate or is_similar_duplicate
-                    
-                    # Log for debugging
-                    if persona_changed:
-                        logger.info(f"🎭 Persona changed from '{last_processed_persona}' to '{current_persona}' - allowing potential duplicate")
-                    
-                    if is_similar_duplicate:
-                        similarity_info = f"words: {len(set(clean_current.split()) & set(clean_last.split()))}/{len(set(clean_current.split()) | set(clean_last.split()))}"
-                        jaccard_sim = len(set(clean_current.split()) & set(clean_last.split())) / len(set(clean_current.split()) | set(clean_last.split())) if len(set(clean_current.split()) | set(clean_last.split())) > 0 else 0
-                        logger.info(f"✋ Similar duplicate detected: '{clean_current}' vs '{clean_last}' - {similarity_info} (sim: {jaccard_sim:.2f}), time: {time_since_last:.1f}s")
-                    elif is_exact_duplicate:
-                        logger.info(f"✋ Exact duplicate detected: '{clean_current}' vs '{clean_last}' - time: {time_since_last:.1f}s")
-                    else:
-                        logger.info(f"✅ Duplicate check: '{clean_current}' vs '{clean_last}' - not duplicate, time: {time_since_last:.1f}s")
-                    
-                    # More flexible processing conditions
-                    should_process = (
-                        final_text and 
-                        len(normalized_current) >= 3 and  # Minimum 3 characters
-                        not is_duplicate and  # Use the comprehensive duplicate check (now persona-aware)
-                        llm_service
-                    )
-                    
-                    if should_process:
-                        logger.info(f"Processing transcript: '{final_text}' (time since last: {time_since_last:.1f}s)")
-                        last_processed_transcript = final_text
-                        last_processing_time = current_time
-                        last_processed_persona = current_persona  # Save the persona
-                        
-                        # Get web search enabled status from frontend (if available)
-                        web_search_enabled = session_web_search.get(session_id, False)
-                        
-                        await handle_llm_streaming(final_text, session_id, websocket, current_persona, web_search_enabled=web_search_enabled)
-                    else:
-                        logger.info(f"Skipping transcript: '{final_text}' - duplicate: {is_duplicate}, persona_changed: {persona_changed}, time_since_last: {time_since_last:.1f}s")
-                        
+
+                    if is_duplicate:
+                        logger.info(f"🚫 Duplicate transcript detected: '{final_text}' - time: {time_since_last:.1f}s")
+                        return
+
+                    # Process immediately if system is ready
+                    logger.info(f"📝 Processing transcript: '{final_text}' (time since last: {time_since_last:.1f}s)")
+
+                    # Get web search enabled status
+                    web_search_enabled = session_web_search.get(session_id, False)
+
+                    await handle_llm_streaming(final_text, session_id, websocket, current_persona, web_search_enabled=web_search_enabled)
+
+                    # Update tracking variables after successful processing
+                    last_processed_transcript = final_text
+                    last_processing_time = current_time
+                    last_processed_persona = current_persona
+
+                    # Also update global session tracking for consistency
+                    session_last_transcript[session_id] = final_text
+                    session_last_time[session_id] = current_time
+                    session_last_persona[session_id] = current_persona
+
         except Exception as e:
-            logger.error(f"Error sending transcription: {e}")
+            logger.error(f"Error in transcription callback: {str(e)}")
 
     try:
         if assemblyai_streaming_service:
@@ -910,7 +1145,7 @@ async def audio_stream_websocket(websocket: WebSocket):
             await assemblyai_streaming_service.start_streaming_transcription(
                 websocket_callback=safe_websocket_callback
             )
-        
+
         welcome_message = {
             "type": "audio_stream_ready",
             "message": "Audio streaming endpoint ready with AssemblyAI transcription. Send binary audio data.",
@@ -1043,12 +1278,12 @@ async def audio_stream_websocket(websocket: WebSocket):
                                             await assemblyai_streaming_service.start_streaming_transcription(
                                                 websocket_callback=safe_websocket_callback
                                             )
-                                            logger.info(f"✅ AssemblyAI streaming reinitialized for session {session_id}")
+                                            logger.info(f"[SUCCESS] AssemblyAI streaming reinitialized for session {session_id}")
                                         except Exception as streaming_error:
                                             logger.error(f"Failed to reinitialize streaming: {streaming_error}")
                                     
                                     if success:
-                                        logger.info(f"✅ Services reinitialized with user API keys for session {session_id}")
+                                        logger.info(f"[SUCCESS] Services reinitialized with user API keys for session {session_id}")
                                         response = {
                                             "type": "api_keys_updated",
                                             "success": True,
@@ -1057,7 +1292,7 @@ async def audio_stream_websocket(websocket: WebSocket):
                                             "timestamp": datetime.now().isoformat()
                                         }
                                     else:
-                                        logger.error(f"❌ Failed to reinitialize services with user API keys for session {session_id}")
+                                        logger.error(f"[ERROR] Failed to reinitialize services with user API keys for session {session_id}")
                                         response = {
                                             "type": "api_keys_updated",
                                             "success": False,
@@ -1067,46 +1302,6 @@ async def audio_stream_websocket(websocket: WebSocket):
                                         }
                                     
                                     await manager.send_personal_message(json.dumps(response), websocket)
-                                    continue# Handle API keys update from user
-                                    try:
-                                        api_keys_data = command_data.get("api_keys", {})
-                                        user_keys = APIKeyConfig(
-                                            gemini_api_key=api_keys_data.get("gemini_api_key", ""),
-                                            assemblyai_api_key=api_keys_data.get("assemblyai_api_key", ""),
-                                            murf_api_key=api_keys_data.get("murf_api_key", ""),
-                                            murf_voice_id=api_keys_data.get("murf_voice_id", "en-IN-aarav"),
-                                            tavily_api_key=api_keys_data.get("tavily_api_key", ""),
-                                            mongodb_url=os.getenv("MONGODB_URL")  # Keep using env for MongoDB
-                                        )
-                                        
-                                        # Reinitialize services with user keys
-                                        success = reinitialize_services_with_user_keys(user_keys)
-                                        
-                                        if success:
-                                            logger.info("✅ Services reinitialized with user-provided API keys")
-                                            response_message = "API keys updated successfully"
-                                        else:
-                                            logger.warning("⚠️ Some services failed to reinitialize with user keys")
-                                            response_message = "API keys updated with some warnings"
-                                        
-                                        # Send confirmation back to client
-                                        api_keys_response = {
-                                            "type": "api_keys_updated",
-                                            "success": success,
-                                            "message": response_message,
-                                            "timestamp": datetime.now().isoformat()
-                                        }
-                                        await manager.send_personal_message(json.dumps(api_keys_response), websocket)
-                                        
-                                    except Exception as e:
-                                        logger.error(f"API keys update error: {str(e)}")
-                                        error_response = {
-                                            "type": "api_keys_error",
-                                            "success": False,
-                                            "message": f"Failed to update API keys: {str(e)}",
-                                            "timestamp": datetime.now().isoformat()
-                                        }
-                                        await manager.send_personal_message(json.dumps(error_response), websocket)
                                     continue
                         except json.JSONDecodeError:
                             # Not JSON, treat as regular command
@@ -1188,14 +1383,36 @@ async def audio_stream_websocket(websocket: WebSocket):
         manager.disconnect(websocket)
     finally:
         is_websocket_active = False
+
+        # Cancel any active TTS tasks for this session
+        try:
+            if session_id in active_tts_tasks:
+                logger.info(f"[CLEANUP] Cancelling active TTS task for session {session_id}")
+                active_tts_tasks[session_id].cancel()
+                try:
+                    await active_tts_tasks[session_id]
+                except asyncio.CancelledError:
+                    logger.info(f"[CLEANUP] TTS task cancelled successfully for session {session_id}")
+                del active_tts_tasks[session_id]
+        except Exception as e:
+            logger.error(f"Error cancelling TTS task: {e}")
+
+        # Clear processing flag
+        try:
+            if session_id in session_processing:
+                session_processing[session_id] = False
+                logger.info(f"[CLEANUP] Cleared processing flag for session {session_id}")
+        except Exception as e:
+            logger.error(f"Error clearing processing flag: {e}")
+
         if assemblyai_streaming_service:
             await assemblyai_streaming_service.stop_streaming_transcription()
-        
+
         # Clean up temporary audio file
         try:
             if os.path.exists(audio_filepath):
                 os.unlink(audio_filepath)
-                logger.info(f"🧹 Cleaned up temporary audio file: {audio_filename}")
+                logger.info(f"[CLEANUP] Cleaned up temporary audio file: {audio_filename}")
         except Exception as e:
             logger.warning(f"Failed to clean up temporary audio file {audio_filename}: {str(e)}")
 

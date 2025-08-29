@@ -165,14 +165,15 @@ class AssemblyAIStreamingService:
     
     async def send_audio_chunk(self, audio_data: bytes):
         try:
-            if self.client and self.is_streaming and self._active:
+            if self.client and self.is_streaming:
                 if len(audio_data) > 0:
                     self.client.stream(audio_data)
                 else:
                     logger.warning("Empty audio chunk received")
                 return True
             else:
-                logger.warning(f"Streaming client not ready (active: {self._active}, streaming: {self.is_streaming})")
+                # If not ready yet, wait a bit and try again
+                logger.debug(f"Streaming client not ready (active: {self._active}, streaming: {self.is_streaming}) - will retry")
                 return False
                 
         except Exception as e:

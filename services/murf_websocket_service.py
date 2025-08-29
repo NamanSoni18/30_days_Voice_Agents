@@ -39,7 +39,7 @@ class MurfWebSocketService:
             connection_url = f"{self.ws_url}?api-key={self.api_key}&sample_rate=44100&channel_type=MONO&format=WAV"
             self.websocket = await websockets.connect(connection_url)
             self.is_connected = True
-            logger.info("✅ Connected to Murf WebSocket")
+            logger.info("[SUCCESS] Connected to Murf WebSocket")
             
             # Only clear context on first connection, not every time
             # await self.clear_context()
@@ -54,15 +54,44 @@ class MurfWebSocketService:
         finally:
             self._connecting = False
     
+    async def ensure_connected(self):
+        """Ensure WebSocket is connected, reconnect if necessary"""
+        if not self.is_connected or not self.websocket or self.websocket.closed:
+            logger.info("WebSocket not connected, attempting to reconnect...")
+            await self.connect()
+        elif self.websocket.open:
+            # Test connection with a ping
+            try:
+                await self.websocket.ping()
+                logger.debug("WebSocket connection is healthy")
+            except Exception as e:
+                logger.warning(f"WebSocket ping failed: {e}, reconnecting...")
+                await self.connect()
+        else:
+            logger.info("WebSocket connection state unknown, reconnecting...")
+            await self.connect()
+    
     async def _send_voice_config(self, context_id: str = None):
         """Send voice configuration to Murf WebSocket"""
         try:
             if context_id is None:
                 context_id = f"voice_agent_context_{uuid.uuid4().hex[:8]}"
             
-            # Clear any existing context first if we have one
-            if self.current_context_id and self.current_context_id in self.active_contexts:
-                await self._clear_specific_context(self.current_context_id)
+            # Don't clear existing context if it's the same - just reuse it
+            if self.current_context_id == context_id:
+                logger.info(f"Reusing existing context: {context_id}")
+                return
+            
+            # Only clear if we're switching to a different context
+            if self.current_context_id and self.current_context_id != context_id:
+                logger.info(f"Switching context from {self.current_context_id} to {context_id}")
+                # Don't wait for context clear acknowledgment to speed up the process
+                try:
+                    clear_msg = {"clear_context": {"context_id": self.current_context_id}}
+                    await self.websocket.send(json.dumps(clear_msg))
+                    self.active_contexts.discard(self.current_context_id)
+                except Exception as e:
+                    logger.warning(f"Failed to clear old context {self.current_context_id}: {e}")
             
             self.current_context_id = context_id
             self.active_contexts.add(context_id)
@@ -80,24 +109,25 @@ class MurfWebSocketService:
             logger.info(f"Sending voice config with context_id: {context_id}")
             await self.websocket.send(json.dumps(voice_config_msg))
             
-            # Wait for voice config acknowledgment with recv lock
-            async with self._recv_lock:
-                try:
-                    response = await asyncio.wait_for(self.websocket.recv(), timeout=10.0)
+            # Reduce timeout and don't block the process if acknowledgment fails
+            try:
+                async with self._recv_lock:
+                    response = await asyncio.wait_for(self.websocket.recv(), timeout=5.0)  # Reduced timeout
                     data = json.loads(response)
                     logger.info(f"Voice config response: {data}")
                     
                     # Check for context limit exceeded error
                     if "error" in data and "Exceeded Active context limit" in data["error"]:
-                        logger.warning(f"Context limit exceeded for {context_id}, clearing all contexts and retrying")
+                        logger.warning(f"Context limit exceeded, clearing all contexts")
                         await self._clear_all_contexts()
                         # Retry with a new context ID
                         new_context_id = f"voice_agent_context_{uuid.uuid4().hex[:8]}"
                         await self._send_voice_config(new_context_id)
                         return
                         
-                except asyncio.TimeoutError:
-                    logger.warning("Timeout waiting for voice config acknowledgment")
+            except asyncio.TimeoutError:
+                logger.warning("Voice config acknowledgment timeout - continuing anyway")
+                # Don't fail here, continue with TTS processing
                     # Don't raise error, continue anyway
             
         except Exception as e:
@@ -177,12 +207,26 @@ class MurfWebSocketService:
             logger.info(f"Sending complete text ({len(accumulated_text)} chars): {accumulated_text[:100]}...")
             await self.websocket.send(json.dumps(text_msg))
             
-            # Now listen for audio responses
-            async for audio_response in self._listen_for_audio():
+            # Listen for audio responses with timeout
+            audio_received = False
+            timeout_count = 0
+            max_timeouts = 2  # Reduced from 3 to 2 for faster failure detection
+            
+            async for audio_response in self._listen_for_audio_with_timeout():
+                audio_received = True
                 yield audio_response
                 # Break on final audio chunk
                 if audio_response.get("type") == "audio_chunk" and audio_response.get("is_final"):
                     break
+                elif audio_response.get("type") == "timeout":
+                    timeout_count += 1
+                    if timeout_count >= max_timeouts:
+                        logger.error(f"Too many timeouts ({timeout_count}), giving up on TTS")
+                        break
+            
+            if not audio_received:
+                logger.error("No audio chunks received from Murf WebSocket")
+                raise Exception("No audio response received from TTS service")
             
         except Exception as e:
             logger.error(f"Error in stream_text_to_audio: {str(e)}")
@@ -191,6 +235,92 @@ class MurfWebSocketService:
     def get_current_context_id(self) -> Optional[str]:
         """Get the current context ID"""
         return self.current_context_id
+    
+    async def _listen_for_audio_with_timeout(self) -> AsyncGenerator[dict, None]:
+        """Listen for audio with better timeout handling"""
+        audio_chunk_count = 0
+        total_audio_size = 0
+        
+        try:
+            while True:
+                try:
+                    # Use recv lock to prevent concurrent recv() calls
+                    async with self._recv_lock:
+                        response = await asyncio.wait_for(self.websocket.recv(), timeout=30.0)  # Reduced timeout for better responsiveness
+                    
+                    data = json.loads(response)
+                    logger.debug(f"📥 Received response: {list(data.keys())}")
+                    
+                    if "audio" in data:
+                        audio_chunk_count += 1
+                        audio_base64 = data["audio"]
+                        total_audio_size += len(audio_base64)
+                        
+                        # Yield the response
+                        yield {
+                            "type": "audio_chunk",
+                            "audio_base64": audio_base64,
+                            "context_id": data.get("context_id"),
+                            "chunk_number": audio_chunk_count,
+                            "chunk_size": len(audio_base64),
+                            "total_size": total_audio_size,
+                            "timestamp": datetime.now().isoformat(),
+                            "is_final": data.get("final", False)
+                        }
+                        
+                        # Check if this is the final audio chunk
+                        if data.get("final"):
+                            logger.info(f"Received final audio chunk. Total chunks: {audio_chunk_count}, Total size: {total_audio_size}")
+                            break
+                    
+                    elif "error" in data:
+                        logger.error(f"Murf WebSocket error: {data['error']}")
+                        yield {
+                            "type": "error",
+                            "error": data["error"],
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        break
+                    
+                    else:
+                        # Non-audio response
+                        logger.debug(f"Received non-audio response: {data}")
+                        yield {
+                            "type": "status",
+                            "data": data,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                
+                except asyncio.TimeoutError:
+                    logger.warning("Timeout waiting for Murf response")
+                    yield {
+                        "type": "timeout",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    # Continue waiting for a bit more
+                    continue
+                    
+                except websockets.exceptions.ConnectionClosed:
+                    logger.warning("WebSocket connection closed unexpectedly")
+                    self.is_connected = False
+                    break
+                    
+                except Exception as e:
+                    logger.error(f"Error receiving response: {str(e)}")
+                    yield {
+                        "type": "error", 
+                        "error": str(e),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    break
+        
+        except Exception as e:
+            logger.error(f"Fatal error in audio listening: {str(e)}")
+            yield {
+                "type": "error",
+                "error": f"Fatal error: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }
     
     async def _listen_for_audio(self) -> AsyncGenerator[dict, None]:
         audio_chunk_count = 0
@@ -201,7 +331,7 @@ class MurfWebSocketService:
                 try:
                     # Use recv lock to prevent concurrent recv() calls
                     async with self._recv_lock:
-                        response = await asyncio.wait_for(self.websocket.recv(), timeout=60.0)  # Increased timeout
+                        response = await asyncio.wait_for(self.websocket.recv(), timeout=90.0)  # Increased timeout for TTS processing
                     
                     data = json.loads(response)
                     # logger.info(f"📥 Received response: {list(data.keys())}")
@@ -238,9 +368,16 @@ class MurfWebSocketService:
                         }
                 
                 except asyncio.TimeoutError:
-                    logger.warning("Timeout waiting for Murf response")
-                    # Don't break, just continue - the audio might come later
-                    continue
+                    logger.warning("Timeout waiting for Murf response - attempting reconnection")
+                    # Try to reconnect if we timeout
+                    try:
+                        await self.connect()
+                        logger.info("Reconnected to Murf WebSocket after timeout")
+                        # Continue listening after reconnection
+                        continue
+                    except Exception as reconnect_error:
+                        logger.error(f"Failed to reconnect: {reconnect_error}")
+                        break
                 except websockets.exceptions.ConnectionClosed:
                     logger.warning("WebSocket connection closed unexpectedly")
                     self.is_connected = False

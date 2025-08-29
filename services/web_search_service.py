@@ -43,7 +43,7 @@ class WebSearchService:
                             "url": url
                         })
                 
-                logger.info(f"✅ Found {len(search_results)} relevant web search results")
+                logger.info(f"[SUCCESS] Found {len(search_results)} relevant web search results")
             else:
                 logger.warning("⚠️ No search results found")
             
