@@ -12,38 +12,48 @@ A sophisticated conversational AI voice agent built for the "30 Days of Voice Ag
 - **💾 Persistent Session Management**: MongoDB-powered conversation history with session switching
 - **⚡ WebSocket Real-time Processing**: Instant audio processing and response generation
 
+### Advanced AI Capabilities
+- **🎭 Dynamic Persona Switching**: Real-time persona changes during conversations
+- **🔄 Context-Aware Conversations**: Maintains conversation context across sessions
+- **🧠 Intelligent Duplicate Detection**: Prevents processing of repeated audio inputs
+- **⚡ Concurrent Processing Management**: Handles multiple simultaneous requests efficiently
+- **🔄 Auto-retry Logic**: Robust error recovery and connection management
+- **📊 Live Processing Status**: Real-time feedback on audio processing and AI generation
+
 ### Modern Interface Features
-- ** Contemporary UI**: Modern card-based interface with gradient backgrounds and animations
-- ** Persona Selection**: Interactive persona switcher with visual indicators
+- **🎨 Contemporary UI**: Modern card-based interface with gradient backgrounds and animations
+- **👤 Persona Selection**: Interactive persona switcher with visual indicators
 - **💬 Dual Chat Interfaces**: Both modern streaming chat and legacy conversation history
 - **📱 Responsive Design**: Mobile-optimized interface that works across all devices
 - **🔄 Session Management**: Create new chats, switch between sessions, view conversation history
 - **⚙️ Settings Modal**: User-friendly API key configuration with validation
 
-### Advanced Capabilities
-- **🔍 Toggle Web Search**: Enable/disable web search functionality per conversation
+### Technical Excellence
+- **🔊 Audio Chunk Processing**: Real-time audio chunk handling with base64 encoding
 - **🎵 Streaming Audio Playback**: Real-time audio chunk processing and playback
-- **💬 Context-Aware Conversations**: Maintains conversation context across sessions
-- **🎯 Comprehensive Error Handling**: Graceful fallbacks for service failures
-- **📊 Live Status Updates**: Real-time connection and processing indicators
-- **🔄 Auto-retry Logic**: Robust error recovery and connection management
+- **💾 Automatic Audio Cleanup**: Smart temporary file management and cleanup
+- **🔐 Secure API Key Management**: In-browser storage with validation
+- **📊 Comprehensive Logging**: Detailed logging with configurable levels
+- **🛡️ Comprehensive Error Handling**: Graceful fallbacks for service failures
+- **🔄 Fallback TTS Mechanisms**: Multiple TTS strategies for reliability
+- **⚡ Performance Optimization**: Efficient WebSocket connection reuse and context management
 
 ## 📁 Project Structure
 
 ```
 ├── main.py                                 # FastAPI application with WebSocket streaming and all endpoints
-├── requirements.txt                        # Python dependencies
-├── voice_agent.log                        # Application logs
-├── .env                                   # Environment variables (API keys)
+├── requirements.txt                        # Python dependencies with specific versions
+├── voice_agent.log                        # Application logs with configurable logging levels
+├── .env                                   # Environment variables (API keys - optional)
 ├── .env.example                           # Example environment configuration
 ├── services/                              # Core service integrations
 │   ├── assemblyai_streaming_service.py   # Real-time speech recognition streaming
 │   ├── database_service.py               # MongoDB operations and session management
 │   ├── llm_service.py                     # Google Gemini AI with multi-persona support
-│   ├── murf_websocket_service.py          # Real-time text-to-speech streaming
+│   ├── murf_websocket_service.py          # Real-time text-to-speech streaming with fallbacks
 │   ├── stt_service.py                     # Traditional file-based speech-to-text
 │   ├── tts_service.py                     # Traditional text-to-speech conversion
-│   └── web_search_service.py              # Tavily web search integration
+│   └── web_search_service.py              # Tavily web search integration with result formatting
 ├── models/
 │   └── schemas.py                         # Pydantic data models and validation schemas
 ├── static/
@@ -75,8 +85,6 @@ You have **two options** for configuring API keys:
 - Keys are stored securely in your browser's localStorage
 - Real-time validation ensures your keys are working correctly
 - **No environment file setup needed!**
-
-
 
 ### 🔧 API Key Setup Guide
 1. **Google Gemini API**: Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
@@ -144,7 +152,7 @@ Choose from four distinct AI personalities for varied conversation experiences:
 - `GET /agent/chat/{session_id}/history` - Retrieve specific session conversation history
 - `DELETE /agent/chat/{session_id}/history` - Clear session conversation history
 
-### 🔍 Web Search API  
+### 🔍 Web Search API
 - `POST /api/web-search` - Perform intelligent web search queries
 - Returns contextual search results for AI enhancement
 
@@ -161,19 +169,19 @@ Choose from four distinct AI personalities for varied conversation experiences:
 1. **WebSocket Connection** → Browser establishes secure real-time connection
 2. **Live Audio Capture** → Microphone streams audio directly to server via WebSocket
 3. **Real-time Transcription** → AssemblyAI Universal Streaming processes audio chunks instantly
-4. **Persona-Based AI Response** → Selected persona (Developer/Aizen/Luffy/Politician) generates contextual responses
+4. **Persona-Based AI Response** → Selected persona generates contextual responses
 5. **Optional Web Search** → If enabled, Tavily API provides current web information
 6. **Streaming TTS** → Murf WebSocket streams high-quality audio response in real-time
 7. **Live Audio Playback** → Audio chunks play as they arrive for seamless experience
 8. **Instant Storage** → Complete conversation immediately persisted to MongoDB
 9. **UI Updates** → Real-time status updates and conversation display
 
-### � Modern Interface Features
+### 🎨 Modern Interface Features
 1. **Dual Chat Modes** → Modern streaming chat + legacy conversation history view
 2. **Persona Selection** → Visual persona switcher with animated transitions
 3. **Session Management** → Create new chats, switch between existing sessions
 4. **Web Search Toggle** → Enable/disable web search per conversation
-5. **Settings Modal** → User-friendly API key configuration with real-time validation
+5. **Settings Modal** → Comprehensive API key configuration interface
 6. **Responsive Design** → Mobile-optimized interface that adapts to all screen sizes
 
 ### 🔍 Intelligent Web Search Integration
@@ -183,135 +191,72 @@ Choose from four distinct AI personalities for varied conversation experiences:
 - **Source Attribution**: Search results properly cited and referenced
 - **Toggle Control**: Users can enable/disable web search functionality per conversation
 
-## ⚙️ Technical Configuration
+## 🛠️ Technology Stack
 
-### 🎵 Audio Settings
-- **Sample Rate**: 16kHz (optimized for speech recognition)
-- **Format**: PCM (Pulse Code Modulation)
-- **Channels**: Mono (single channel)
-- **Chunk Size**: 4096 samples for optimal streaming
-- **Supported Formats**: WAV, MP3, M4A, FLAC
+### Backend
+- **FastAPI**: High-performance async web framework
+- **WebSockets**: Real-time bidirectional communication
+- **Uvicorn**: ASGI server for production deployment
+- **Pydantic**: Data validation and serialization
+- **Motor**: Async MongoDB driver for database operations
 
-### 🗄️ Database Schema
-```python
-Session Document:
-{
-    "_id": "unique_session_id",
-    "messages": [
-        {
-            "role": "user|assistant",
-            "content": "message_content",
-            "timestamp": "ISO_datetime",
-            "audio_file": "optional_audio_path"
-        }
-    ],
-    "created_at": "ISO_datetime",
-    "last_activity": "ISO_datetime"
-}
+### AI & ML Services
+- **Google Gemini 1.5 Flash**: Advanced LLM for conversational AI
+- **AssemblyAI**: Real-time speech recognition and transcription
+- **Murf AI**: High-quality text-to-speech synthesis
+- **Tavily**: Intelligent web search and content discovery
+
+### Frontend
+- **Vanilla JavaScript**: Modern ES6+ with async/await
+- **HTML5 Web Audio API**: Real-time audio capture and playback
+- **CSS3**: Responsive design with modern styling
+- **Marked.js**: Markdown parsing and rendering
+- **Highlight.js**: Code syntax highlighting
+
+### Database & Storage
+- **MongoDB**: Document-based database for session management
+- **In-memory Fallback**: Graceful degradation when MongoDB unavailable
+- **Temporary File System**: Efficient audio file management
+
+### Development & Deployment
+- **Python 3.7+**: Core programming language
+- **Docker Ready**: Containerized deployment support
+- **Environment Configuration**: Flexible API key management
+- **Comprehensive Logging**: Structured logging with multiple levels
+
+## 🏗️ System Architecture
+
+### Real-time Audio Pipeline
+1. **Audio Capture**: Browser captures microphone input via Web Audio API
+2. **Streaming Transmission**: Audio chunks sent via WebSocket to backend
+3. **Speech Recognition**: AssemblyAI processes audio in real-time
+4. **AI Processing**: Google Gemini generates contextual responses
+5. **Text-to-Speech**: Murf AI converts responses to natural speech
+6. **Audio Streaming**: Real-time audio playback with base64 encoding
+
+### WebSocket Communication Flow
+```
+Browser ↔ FastAPI WebSocket ↔ AssemblyAI Streaming
+    ↕                    ↕
+Audio Input        Speech Recognition
+    ↕                    ↕
+Real-time Display  ↔ Murf WebSocket TTS
+    ↕                    ↕
+UI Updates         Audio Output Streaming
 ```
 
-### 🔧 Environment Configuration
-```python
-# Required API Keys
-GEMINI_API_KEY          # Google AI language model
-ASSEMBLYAI_API_KEY      # Speech recognition service  
-MURF_API_KEY           # Text-to-speech synthesis
-TAVILY_API_KEY         # Web search functionality
-MONGODB_URL            # Database connection (fallback: in-memory)
-MURF_VOICE_ID          # Voice selection (default: en-IN-aarav)
-```
+### Session Management
+- **Unique Session IDs**: Each conversation gets a UUID for tracking
+- **Context Preservation**: Conversation history maintained across sessions
+- **Persona Persistence**: AI personality settings saved per session
+- **Web Search State**: Search preferences maintained per conversation
+- **Automatic Cleanup**: Old sessions and temporary files cleaned up
 
-### 🎵 Audio File Management
-- **Temporary Storage**: Audio files are now stored in the system's temporary directory
-- **Automatic Cleanup**: Files are automatically removed after playback completion
-- **Session Cleanup**: Temporary files are cleaned when switching sessions or closing the app
-- **Manual Cleanup**: Use `cleanup_console_logs.ps1` script for manual cleanup
-- **No Persistent Storage**: Audio files no longer accumulate in the `streamed_audio` folder
-- **Memory Efficient**: Reduced disk usage with automatic temporary file management
-
-### 🛡️ Error Handling & Resilience
-- **Service Fallbacks**: Graceful degradation when external APIs fail
-- **Connection Retry**: Automatic retry logic for transient failures  
-- **Comprehensive Logging**: Detailed logs in `voice_agent.log`
-- **User-Friendly Messages**: Clear error communication through modern UI
-- **Session Recovery**: Maintains state across connection interruptions
-- **API Key Validation**: Real-time validation of user-provided API keys
-- **Fallback Audio**: Text-to-speech fallback messages for error scenarios
-
-## 🎨 Interface Features
-
-### 🖥️ Modern Design Elements
-- **Gradient Backgrounds**: Contemporary visual design with animated effects
-- **Card-Based Layout**: Clean, organized interface components
-- **Responsive Grid**: Adapts seamlessly to desktop, tablet, and mobile
-- **Smooth Animations**: Engaging transitions and micro-interactions
-- **Real-time Indicators**: Live status updates and connection monitoring
-
-### 🎛️ User Controls
-- **Microphone Button**: Large, accessible voice activation control
-- **Persona Selector**: Visual dropdown with character icons and descriptions
-- **Web Search Toggle**: Easy enable/disable for web search functionality
-- **New Chat Button**: Quick session creation and management
-- **Settings Modal**: Comprehensive API key configuration interface
-- **Session History**: Browse and switch between conversation sessions
-
-## 🔧 Troubleshooting
-
-### 🎤 Common Issues & Solutions
-
-#### **Microphone Not Working**
-- ✅ Check browser permissions (click 🔒 lock icon in address bar)
-- ✅ Verify system microphone settings and default device
-- ✅ Test with other applications to confirm microphone functionality
-- ✅ Try different browsers (Chrome/Edge recommended)
-
-#### **API Connection Errors**
-- ✅ Verify all API keys are correctly set in `.env` file
-- ✅ Check API key validity and account limits
-- ✅ Ensure stable internet connection
-
-#### **Audio Playback Issues**
-- ✅ Check browser Web Audio API support
-- ✅ Verify system audio output settings
-- ✅ Clear browser cache and cookies
-- ✅ Test with different audio formats
-
-#### **Connection & Performance**
-- ✅ Ensure all required services are accessible
-- ✅ Check firewall and antivirus settings
-- ✅ Monitor network latency for real-time features
-- ✅ Restart application if persistent issues occur
-
-**Log Categories:**
-- 🚀 **Service initialization** and configuration status
-- 🔌 **WebSocket connection** events and lifecycle
-- 📞 **API call** success/failure with response times
-- 🎵 **Audio processing** metrics and performance data
-- 🗄️ **Database operations** and session management
-- ❌ **Error tracking** with stack traces and context
-
-### 🏥 Health Checks
-Monitor application health via the status endpoint:
-```bash
-curl http://127.0.0.1:8000/api/backend
-```
-
-Expected healthy response:
-```json
-{
-    "status": "healthy",
-    "services": {
-        "stt": "connected",
-        "llm": "connected", 
-        "tts": "connected",
-        "database": "connected",
-        "web_search": "connected"
-    },
-    "version": "1.0.0"
-}
-```
-
----
+### Error Handling & Resilience
+- **Graceful Fallbacks**: Multiple TTS strategies for reliability
+- **Connection Recovery**: Automatic reconnection for WebSocket failures
+- **Service Degradation**: App continues functioning with partial service failures
+- **User Feedback**: Real-time status updates and error notifications
 
 ## 🎯 30 Days Voice Agents Challenge
 
