@@ -1,4 +1,4 @@
-# 30 Days of Voice Agents - Modern Voice AI Assistant
+# 30 Days of Voice Agents - VoxMate - Modern Voice AI Assistant 
 
 A sophisticated conversational AI voice agent built for the "30 Days of Voice Agents" coding challenge. This FastAPI-powered application provides real-time voice conversations with multiple AI personas, intelligent web search capabilities, and a modern responsive interface supporting both streaming and traditional interaction modes.
 
