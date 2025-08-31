@@ -488,10 +488,6 @@ session_response_ids = {}
 session_tts_active = {}
 
 def normalize_query_text(text: str) -> str:
-    """
-    Normalize query text for duplicate detection
-    Removes case, punctuation, and extra spacing differences
-    """
     if not text:
         return ""
     
