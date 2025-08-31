@@ -51,7 +51,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const streamingStatusLog = document.getElementById("streamingStatusLog");
   const connectionStatus = document.getElementById("connectionStatus");
   const statusText = document.getElementById("statusText");
-  const streamingSessionId = document.getElementById("streamingSessionId");
+  // const streamingSessionId = document.getElementById("streamingSessionId");
 
   // Initialize session
   initializeSession();
@@ -402,10 +402,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const url = new URL(window.location);
     url.searchParams.set("session_id", sessionId);
     window.history.replaceState({}, "", url);
-    const sessionIdElement = document.getElementById("sessionId");
-    if (sessionIdElement) {
-      sessionIdElement.textContent = sessionId;
-    }
+    // Session info hidden - no longer updating DOM element
+    // const sessionIdElement = document.getElementById("sessionId");
+    // if (sessionIdElement) {
+    //   sessionIdElement.textContent = sessionId;
+    // }
   }
 
   async function initializeSession() {
@@ -1082,6 +1083,41 @@ document.addEventListener("DOMContentLoaded", function () {
 
           // Chat history is now updated in real-time when response is saved
           // No need for delayed reload
+        } else if (data.type === "session_reset") {
+          // Handle session reset - ensure everything is ready for next query
+          updateStreamingStatus(`🔄 ${data.message}`, "success");
+          
+          // Reset all UI states
+          isStreaming = false;
+          isConnecting = false;
+          
+          // Reset button state
+          if (audioStreamBtn) {
+            audioStreamBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+            audioStreamBtn.className = "mic-button";
+            audioStreamBtn.setAttribute("data-state", "ready");
+            
+            const micStatus = audioStreamBtn.querySelector(".mic-status");
+            if (micStatus) {
+              micStatus.textContent = "Click to talk";
+            } else {
+              audioStreamBtn.innerHTML += '<span class="mic-status">Click to talk</span>';
+            }
+          }
+          
+          // Stop any lingering audio
+          stopAllAudioPlayback();
+          
+          // Clear any buffered audio
+          audioChunks = [];
+          audioBuffer = [];
+          isBuffering = false;
+          
+          // Update status to ready
+          updateConnectionStatus("connected", "Ready for voice input");
+          
+          console.log("🔄 Session reset complete - ready for next query");
+          
         } else if (data.type === "llm_streaming_error") {
           updateStreamingStatus(`❌ ${data.message}`, "error");
         } else if (data.type === "tts_streaming_error") {
@@ -1098,6 +1134,13 @@ document.addEventListener("DOMContentLoaded", function () {
           // Stop all current audio playback when new query starts
           updateStreamingStatus(`🛑 ${data.message}`, "info");
           stopAllAudioPlayback();
+          
+          // Reset audio buffers for clean start
+          audioChunks = [];
+          audioBuffer = [];
+          isBuffering = false;
+          
+          console.log("🛑 Audio playback stopped for new query");
         } else if (data.type === "response_saved") {
           updateStreamingStatus(`💾 ${data.message}`, "success");
           // Response is already being updated in real-time, just mark as saved

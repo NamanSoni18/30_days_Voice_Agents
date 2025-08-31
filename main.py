@@ -103,6 +103,18 @@ async def startup_event():
     else:
         logger.error("[ERROR] Database service not initialized")
     
+    # Start background safety cleanup task
+    async def periodic_safety_cleanup():
+        while True:
+            try:
+                await asyncio.sleep(30)  # Check every 30 seconds
+                await safety_reset_stuck_sessions()
+            except Exception as e:
+                logger.error(f"Error in periodic safety cleanup: {e}")
+    
+    asyncio.create_task(periodic_safety_cleanup())
+    logger.info("[SAFETY] Started background safety cleanup task")
+    
     logger.info("[SUCCESS] Application startup completed")
 
 
@@ -123,7 +135,13 @@ async def shutdown_event():
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    """Serve the main application page"""
+    """Serve the welcome page"""
+    return templates.TemplateResponse("welcome.html", {"request": request})
+
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat(request: Request):
+    """Serve the main chat application page"""
     session_id = request.query_params.get('session_id')
     if not session_id:
         session_id = str(uuid.uuid4())
@@ -452,6 +470,134 @@ session_last_time = {}
 session_last_persona = {}
 # Track active TTS tasks for cancellation
 active_tts_tasks = {}
+# Track session responses for fallback TTS (prevent reusing previous responses)
+session_responses = {}
+# Track session query queues for processing multiple queries
+session_queues = {}
+# Track currently processing query text per session (for duplicate detection)
+session_current_query = {}
+# Track response playback status to ensure one response per query (RULE 1)
+session_response_played = {}
+# Track response buffer clearing status to prevent replay (RULE 1)
+session_buffer_cleared = {}
+# Track TTS completion to prevent double processing (RULE 1)
+session_tts_completed = {}
+# Track unique response IDs to prevent any possibility of replay
+session_response_ids = {}
+# Track active TTS processing to prevent concurrent starts (RULE 1)
+session_tts_active = {}
+
+def normalize_query_text(text: str) -> str:
+    """
+    Normalize query text for duplicate detection
+    Removes case, punctuation, and extra spacing differences
+    """
+    if not text:
+        return ""
+    
+    # Convert to lowercase and remove punctuation
+    normalized = re.sub(r'[^\w\s]', ' ', text.lower())
+    # Normalize whitespace (multiple spaces become single space, trim)
+    normalized = ' '.join(normalized.split())
+    return normalized
+
+def log_session_state(session_id: str, event: str):
+    """
+    Log session state for rule compliance tracking
+    """
+    processing = session_processing.get(session_id, False)
+    queue_length = len(session_queues.get(session_id, []))
+    response_played = session_response_played.get(session_id, False)
+    buffer_cleared = session_buffer_cleared.get(session_id, False)
+    current_query = session_current_query.get(session_id, "None")
+    
+    logger.info(f"🔍 RULE COMPLIANCE [{event}] Session {session_id}: processing={processing}, queue={queue_length}, played={response_played}, cleared={buffer_cleared}, query='{current_query}'")
+
+def is_duplicate_query(session_id: str, query_text: str) -> bool:
+    """
+    Check if query is duplicate against:
+    1. Currently processing query
+    2. All queries in the session queue
+    3. Recently processed queries (within session)
+    4. Response already played check (RULE 1 protection)
+    
+    Returns True if duplicate found, False if unique
+    """
+    normalized_query = normalize_query_text(query_text)
+    
+    if not normalized_query:
+        return True  # Empty queries are always duplicates
+    
+    # RULE 1: STRICT REPLAY PREVENTION - Check if response already played for this query 
+    current_query = session_current_query.get(session_id)
+    if current_query and normalize_query_text(current_query) == normalized_query:
+        # If it's the same query and response is already played, it's a duplicate
+        if session_response_played.get(session_id, False) or session_tts_completed.get(session_id, False):
+            logger.info(f"🚫 RULE 1: Duplicate detected - response already played for query: '{query_text}'")
+            return True
+        logger.info(f"🚫 Duplicate detected - matches currently processing query: '{query_text}'")
+        return True
+    
+    # Check against all queued queries
+    if session_id in session_queues:
+        for queued_item in session_queues[session_id]:
+            queued_text = queued_item.get('text', '')
+            if normalize_query_text(queued_text) == normalized_query:
+                logger.info(f"🚫 Duplicate detected - matches queued query: '{query_text}'")
+                return True
+    
+    # Check against recently processed (last transcript) - reduced time window for stricter control
+    last_transcript = session_last_transcript.get(session_id, '')
+    if last_transcript and normalize_query_text(last_transcript) == normalized_query:
+        current_time = datetime.now().timestamp()
+        last_time = session_last_time.get(session_id, 0)
+        time_since_last = current_time - last_time
+        
+        # RULE 1: Reduced time window for stricter duplicate prevention (15 seconds instead of 30)
+        if time_since_last < 15:
+            logger.info(f"🚫 RULE 1: Duplicate detected - matches recent processed query: '{query_text}' (time: {time_since_last:.1f}s)")
+            return True
+    
+    logger.info(f"✅ Unique query detected: '{query_text}'")
+    return False
+
+async def safety_reset_stuck_sessions():
+    """Safety mechanism to reset sessions that might be stuck in processing state"""
+    global session_processing, session_last_time
+    
+    current_time = datetime.now().timestamp()
+    stuck_sessions = []
+    
+    for session_id, is_processing in session_processing.items():
+        if is_processing:
+            # Check if session has been processing for more than 30 seconds
+            last_time = session_last_time.get(session_id, current_time)
+            time_stuck = current_time - last_time
+            
+            if time_stuck > 30:  # 30 seconds timeout
+                stuck_sessions.append(session_id)
+                logger.warning(f"🚨 Session {session_id} appears stuck in processing state for {time_stuck:.1f}s - force resetting")
+    
+    # Reset stuck sessions
+    for session_id in stuck_sessions:
+        session_processing[session_id] = False
+        
+        # RULE 4: Clear currently processing query tracking for stuck sessions
+        if session_id in session_current_query:
+            del session_current_query[session_id]
+        
+        # RULE 1 & 4: Clear response tracking for stuck sessions to prevent replay
+        if session_id in session_response_played:
+            del session_response_played[session_id]
+        if session_id in session_buffer_cleared:
+            del session_buffer_cleared[session_id]
+        
+        logger.info(f"🔓 RULE 4: Force-reset processing flag and state for stuck session {session_id}")
+        
+        # Log queue status for debugging
+        queue_length = len(session_queues.get(session_id, []))
+        if queue_length > 0:
+            logger.info(f"📋 Session {session_id} has {queue_length} queued items after reset")
 
 async def cleanup_session_context(old_session_id: str, new_session_id: str):
     """Clean up contexts when switching between sessions"""
@@ -469,6 +615,64 @@ async def cleanup_session_context(old_session_id: str, new_session_id: str):
             del session_contexts[old_session_id]
         except Exception as e:
             logger.error(f"Error cleaning up context for session {old_session_id}: {str(e)}")
+
+
+async def process_session_queue(session_id: str, websocket: WebSocket):
+    """
+    Process any queued queries for a session after the current one completes
+    
+    STRICT OPERATIONAL RULES COMPLIANCE:
+    - RULE 2: FIFO processing with strict sequential order using pop(0)
+    - RULE 3: Error handling with proper state reset and queue continuation  
+    - RULE 4: Complete state management - ensures processing flag and buffers are properly managed
+    - RULE 2: Never leaves queue blocked or stuck, always processes remaining items
+    """
+    global session_queues, session_processing
+    
+    # RULE 2: Ensure we only process if session is completely ready for next query
+    if session_processing.get(session_id, False):
+        logger.info(f"📋 RULE 2: Session {session_id} still processing, skipping queue processing")
+        return
+    
+    if session_id not in session_queues or not session_queues[session_id]:
+        logger.info(f"📋 RULE 2: No queued queries for session {session_id}")
+        return
+    
+    # RULE 2: Get the next query from queue (strict FIFO order)
+    next_query = session_queues[session_id].pop(0)
+    logger.info(f"📋 RULE 2: Processing queued query for session {session_id}: '{next_query['text']}' (Queue length: {len(session_queues[session_id])})")
+    
+    # RULE 1: CRITICAL CHECK - Ensure this query hasn't been processed recently
+    # This prevents duplicate processing if the same query somehow got queued multiple times
+    if is_duplicate_query(session_id, next_query['text']):
+        logger.warning(f"🚫 RULE 1: SKIPPING QUEUED DUPLICATE for session {session_id}: '{next_query['text']}'")
+        # Continue with remaining queue items
+        if session_id in session_queues and session_queues[session_id]:
+            logger.info(f"🔄 RULE 2: Processing remaining {len(session_queues[session_id])} queued items after skipping duplicate")
+            await process_session_queue(session_id, websocket)
+        return
+    
+    try:
+        # RULE 2: Process the queued query sequentially (wait for completion)
+        # This ensures strict FIFO processing and prevents queue blocking
+        await handle_llm_streaming(
+            next_query['text'], 
+            session_id, 
+            websocket, 
+            next_query['persona'], 
+            web_search_enabled=next_query['web_search_enabled']
+        )
+        logger.info(f"✅ RULE 2: Completed queued query for session {session_id}")
+    except Exception as e:
+        logger.error(f"❌ RULE 3: Error processing queued query for session {session_id}: {e}")
+        # RULE 3: Clear processing flag on error to prevent session lockup
+        session_processing[session_id] = False
+        logger.info(f"🔓 RULE 3: Processing flag cleared due to error for session {session_id}")
+        
+        # RULE 2: Continue processing remaining queue items even if one fails
+        if session_id in session_queues and session_queues[session_id]:
+            logger.info(f"🔄 RULE 2: Attempting to process remaining {len(session_queues[session_id])} queued items")
+            await process_session_queue(session_id, websocket)
 
 
 def cleanup_old_temp_audio_files():
@@ -492,11 +696,47 @@ def cleanup_old_temp_audio_files():
 
 # Global function to handle LLM streaming (moved outside WebSocket handler to prevent duplicates)
 async def handle_llm_streaming(user_message: str, session_id: str, websocket: WebSocket, persona: str = "developer", force_processing: bool = False, web_search_enabled: bool = False):
-    """Handle LLM streaming response and send to Murf WebSocket for TTS"""
+    """
+    Handle LLM streaming response and send to Murf WebSocket for TTS
     
-    global session_processing, session_persona_changed, session_contexts, session_last_transcript, session_last_time, session_last_persona
+    STRICT SINGLE PLAYBACK RULES:
+    1. SINGLE PLAYBACK GUARANTEE: Each query spoken exactly once, buffer cleared immediately after
+    2. BUFFER & STATE RESET: Complete state reset before processing new query
+    3. TTS HANDLING: Single fallback attempt, then buffer clear regardless of outcome
+    4. QUERY LIFECYCLE: Complete lifecycle tracking with guaranteed cleanup
+    5. USER EXPERIENCE: One fresh answer per query, zero duplicates or echoes
+    """
+    
+    global session_processing, session_persona_changed, session_contexts, session_last_transcript, session_last_time, session_last_persona, session_current_query, session_response_played, session_buffer_cleared, session_response_ids, session_tts_completed
     
     logger.info(f"[TARGET] Starting LLM streaming for session {session_id}: '{user_message}' with persona: {persona}, web_search: {web_search_enabled}")
+    
+    # RULE 1: Check for duplicates before processing
+    if is_duplicate_query(session_id, user_message):
+        logger.info(f"🚫 DUPLICATE QUERY REJECTED for session {session_id}: '{user_message}'")
+        return
+    
+    # RULE 2: COMPLETE BUFFER & STATE RESET before processing new query
+    unique_response_id = f"{session_id}_{datetime.now().timestamp()}_{hash(user_message)}"
+    session_response_played[session_id] = False
+    session_buffer_cleared[session_id] = False
+    session_tts_completed[session_id] = False
+    session_tts_active[session_id] = False
+    session_response_ids[session_id] = unique_response_id
+    
+    # RULE 2: Ensure response buffer is completely clear before starting
+    if session_id in session_responses:
+        logger.info(f"🧹 RULE 2: Force clearing previous response buffer for session {session_id}")
+        del session_responses[session_id]
+    session_responses[session_id] = ""  # Initialize fresh buffer
+    
+    # Track currently processing query for duplicate detection
+    session_current_query[session_id] = user_message
+    
+    logger.info(f"✅ RULE 2: Complete state reset completed for session {session_id}, response_id: {unique_response_id}")
+    session_current_query[session_id] = user_message
+    
+    log_session_state(session_id, "STATE_INITIALIZED")
     
     # Check if we're already generating LLM response for this session
     if session_id not in session_locks:
@@ -556,10 +796,18 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
     logger.info(f"🔒 Set processing flag for session {session_id}: '{user_message}'")
     logger.info(f"📊 Processing flags after setting: {session_processing}")
     
+    log_session_state(session_id, "PROCESSING_STARTED")
+    
     # Initialize variables at function scope
     accumulated_response = ""
     audio_chunk_count = 0
     total_audio_size = 0
+    
+    # RULE 1: Ensure response buffer is completely clear before starting
+    if session_id in session_responses:
+        logger.info(f"🧹 RULE 1: Clearing previous response buffer for session {session_id}")
+        del session_responses[session_id]
+    session_responses[session_id] = ""  # Initialize fresh buffer
     web_search_results = None
     
     try:
@@ -697,6 +945,9 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                         chunk_count += 1
                         accumulated_response += chunk
                         
+                        # Store current response in session tracking for fallback TTS
+                        session_responses[session_id] = accumulated_response
+                        
                         # Send chunk to client immediately
                         chunk_message = {
                             "type": "llm_streaming_chunk",
@@ -736,8 +987,36 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
             logger.info(f"🔓 LLM generation completed for session {session_id}, starting TTS phase (unlocked)")
         
         # TTS phase - no longer locked, other requests can be processed
+        # RULE 1: CRITICAL CHECK - Prevent TTS if already active, played, or completed
+        if (session_tts_active.get(session_id, False) or
+            session_response_played.get(session_id, False) or 
+            session_buffer_cleared.get(session_id, False) or 
+            session_tts_completed.get(session_id, False)):
+            logger.warning(f"🚫 RULE 1: PREVENTING TTS REPLAY - TTS already processed for session {session_id}")
+            logger.info(f"    - TTS active: {session_tts_active.get(session_id, False)}")
+            logger.info(f"    - Response played: {session_response_played.get(session_id, False)}")
+            logger.info(f"    - Buffer cleared: {session_buffer_cleared.get(session_id, False)}")
+            logger.info(f"    - TTS completed: {session_tts_completed.get(session_id, False)}")
+            # Still need to complete the lifecycle properly
+            session_processing[session_id] = False
+            if session_id in session_current_query:
+                del session_current_query[session_id]
+            await process_session_queue(session_id, websocket)
+            return
+        
+        # RULE 1: Mark TTS as active to prevent concurrent processing
+        session_tts_active[session_id] = True
+        
         # Ensure Murf WebSocket is connected (reuse existing connection if available)
         try:
+            # RULE 1: FINAL CHECK - Mark TTS as starting to prevent any duplicate processing
+            if session_tts_completed.get(session_id, False):
+                logger.warning(f"🚫 RULE 1: TTS already completed for session {session_id}, skipping")
+                session_processing[session_id] = False
+                await process_session_queue(session_id, websocket)
+                return
+                
+            logger.info(f"🔊 RULE 1: Starting TTS for session {session_id}, response_id: {session_response_ids.get(session_id, 'unknown')}")
             await murf_websocket_service.ensure_connected()
             
             # Send LLM stream to Murf and receive base64 audio
@@ -775,8 +1054,17 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                                 }
                                 await manager.send_personal_message(json.dumps(audio_message), websocket)
                                 
-                                # Check if this is the final chunk
+                                # RULE 1: Check if this is the final chunk - mark as played exactly once
                                 if audio_response["is_final"]:
+                                    session_response_played[session_id] = True
+                                    session_tts_completed[session_id] = True
+                                    logger.info(f"🎵 RULE 1: TTS playback completed for session {session_id}, response_id: {session_response_ids.get(session_id, 'unknown')}")
+                                    
+                                    # RULE 1: IMMEDIATE buffer clear after final chunk
+                                    if session_id in session_responses:
+                                        logger.info(f"🧹 RULE 1: Immediate buffer clear after final TTS chunk for session {session_id}")
+                                        del session_responses[session_id]
+                                        session_buffer_cleared[session_id] = True
                                     break
                             
                             elif audio_response["type"] == "timeout":
@@ -850,12 +1138,24 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                 # This prevents new transcripts from being processed while fallback is running
                 logger.warning(f"[CLEANUP] TTS timeout - keeping processing flag set during fallback for session {session_id}")
 
-                # Try to generate fallback audio using traditional TTS
+                # RULE 3: Single fallback attempt with strict buffer validation
                 try:
-                    if tts_service and accumulated_response.strip():
-                        logger.info("Attempting fallback TTS generation...")
+                    # RULE 3: Prevent any replay - check if already played or buffer already cleared
+                    current_response = session_responses.get(session_id, "").strip()
+                    already_played = session_response_played.get(session_id, False)
+                    already_cleared = session_buffer_cleared.get(session_id, False)
+                    
+                    if already_played or already_cleared:
+                        logger.warning(f"🚫 RULE 1: Skipping fallback - response already played or cleared for session {session_id}")
+                        raise Exception("Response already played - preventing replay per RULE 1")
+                    
+                    if tts_service and current_response:
+                        logger.info(f"RULE 3: Single fallback TTS attempt for session {session_id}, response_id: {session_response_ids.get(session_id, 'unknown')}")
+                        logger.info(f"Current response length: {len(current_response)} chars")
+                        logger.info(f"Response preview: {current_response[:100]}...")
+                        
                         fallback_audio_url = await tts_service.generate_speech(
-                            accumulated_response, 
+                            current_response, 
                             format="MP3"
                         )
                         
@@ -864,40 +1164,82 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                                 "type": "tts_fallback_audio",
                                 "audio_url": fallback_audio_url,
                                 "message": "Using fallback audio generation due to WebSocket timeout",
+                                "response_id": session_response_ids.get(session_id, 'unknown'),
                                 "timestamp": datetime.now().isoformat()
                             }
                             await manager.send_personal_message(json.dumps(fallback_message), websocket)
-                            logger.info("[SUCCESS] Fallback audio generated successfully")
+                            logger.info(f"[SUCCESS] RULE 3: Fallback audio generated and sent for session {session_id}")
+                            
+                            # RULE 1: Mark as played exactly once after fallback success
+                            session_response_played[session_id] = True
+                            session_tts_completed[session_id] = True
+                            
+                            # RULE 1: IMMEDIATE buffer clear after fallback playback
+                            if session_id in session_responses:
+                                logger.info(f"🧹 RULE 1: Immediate buffer clear after fallback playback for session {session_id}")
+                                del session_responses[session_id]
+                                session_buffer_cleared[session_id] = True
                         else:
-                            raise Exception("Fallback TTS also failed")
+                            raise Exception("Fallback TTS generation failed")
                     else:
-                        raise Exception("TTS service not available or empty response")
+                        if not current_response:
+                            raise Exception("No current response available for fallback TTS")
+                        else:
+                            raise Exception("TTS service not available")
 
-                    # Clear processing flag after successful fallback
-                    logger.info(f"[CLEANUP] Clearing processing flag after successful fallback for session {session_id}")
+                    # RULE 2: Clear processing flag after successful fallback
+                    logger.info(f"RULE 2: Clearing processing flag after successful fallback for session {session_id}")
                     session_processing[session_id] = False
+                    
+                    # RULE 4: Process any queued queries immediately after fallback success
+                    await process_session_queue(session_id, websocket)
 
                 except Exception as fallback_error:
-                    logger.error(f"Fallback TTS also failed: {fallback_error}")
+                    logger.error(f"❌ RULE 3: Fallback TTS failed: {fallback_error}")
+                    
+                    # RULE 5: When uncertain, skip replaying and clear state
                     timeout_message = {
                         "type": "tts_streaming_timeout",
-                        "message": "TTS streaming timed out - continuing without audio",
+                        "message": "TTS streaming timed out - continuing without audio. Ready for next query.",
                         "timestamp": datetime.now().isoformat()
                     }
                     await manager.send_personal_message(json.dumps(timeout_message), websocket)
 
-                    # Clear processing flag even if fallback failed
-                    logger.info(f"[CLEANUP] Clearing processing flag after failed fallback for session {session_id}")
+                    # RULE 3: Always clear processing flag and buffers on TTS failure
                     session_processing[session_id] = False
+                    logger.info(f"🔓 RULE 3: Processing flag cleared after TTS timeout for session {session_id}")
+                    
+                    # RULE 1: Force clear response buffer to prevent any possibility of replay
+                    if session_id in session_responses:
+                        logger.info(f"🧹 RULE 1: Force clearing response buffer after TTS failure for session {session_id}")
+                        del session_responses[session_id]
+                    session_buffer_cleared[session_id] = True
+                    session_response_played[session_id] = True  # Mark as completed to prevent retry
+                    
+                    # RULE 4: Always process queue even if TTS completely failed
+                    await process_session_queue(session_id, websocket)
+                    
+                    # Send session reset notification even on failure
+                    reset_message = {
+                        "type": "session_reset",
+                        "message": "Session ready for next query (TTS failed but system is responsive)",
+                        "session_id": session_id,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    await manager.send_personal_message(json.dumps(reset_message), websocket)
         except Exception as e:
             logger.error(f"Error with Murf WebSocket streaming: {str(e)}")
             
             # Try fallback TTS immediately when streaming fails
             try:
-                if tts_service and accumulated_response.strip():
-                    logger.info("TTS streaming failed, attempting fallback TTS generation...")
+                # RULE 3: Use session-specific response but ensure no replay from previous queries
+                current_response = session_responses.get(session_id, "").strip()
+                if tts_service and current_response and not session_response_played.get(session_id, False):
+                    logger.info(f"RULE 3: TTS streaming failed, attempting fallback TTS generation for session {session_id}...")
+                    logger.info(f"Current response length: {len(current_response)} chars")
+                    logger.info(f"Response preview: {current_response[:100]}...")
                     fallback_audio_url = await tts_service.generate_speech(
-                        accumulated_response, 
+                        current_response, 
                         format="MP3"
                     )
                     
@@ -909,20 +1251,40 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
                             "timestamp": datetime.now().isoformat()
                         }
                         await manager.send_personal_message(json.dumps(fallback_message), websocket)
-                        logger.info("[SUCCESS] Fallback audio generated successfully after streaming failure")
+                        logger.info("[SUCCESS] RULE 3: Fallback audio generated successfully after streaming failure")
+                        
+                        # RULE 1: Mark as played exactly once after fallback success
+                        session_response_played[session_id] = True
                     else:
                         raise Exception("Fallback TTS also failed")
                 else:
-                    raise Exception("TTS service not available or empty response")
+                    if not current_response:
+                        raise Exception("No current response available for fallback TTS")
+                    elif session_response_played.get(session_id, False):
+                        raise Exception("Response already played - preventing replay per RULE 1")
+                    else:
+                        raise Exception("TTS service not available")
                     
             except Exception as fallback_error:
-                logger.error(f"Fallback TTS also failed: {fallback_error}")
+                logger.error(f"RULE 3: Fallback TTS also failed: {fallback_error}")
                 error_message = {
                     "type": "tts_streaming_error",
                     "message": f"Both streaming and fallback TTS failed: {str(e)}",
                     "timestamp": datetime.now().isoformat()
                 }
                 await manager.send_personal_message(json.dumps(error_message), websocket)
+                
+                # RULE 3: Clear processing flag and buffers even on total failure
+                session_processing[session_id] = False
+                
+                # RULE 1: Clear response buffer even on total failure to prevent replay
+                if session_id in session_responses:
+                    logger.info(f"🧹 RULE 1: Clearing response buffer after total TTS failure for session {session_id}")
+                    del session_responses[session_id]
+                    session_buffer_cleared[session_id] = True
+                
+                # RULE 2: Process queue even on total failure
+                await process_session_queue(session_id, websocket)
         
         finally:
             # Don't disconnect from Murf WebSocket - keep it alive for next request
@@ -937,12 +1299,51 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
             "total_length": len(accumulated_response),
             "audio_chunks_received": audio_chunk_count,
             "total_audio_size": total_audio_size,
-            "session_id": session_id,  # Include session_id in response
+            "session_id": session_id,
+            "response_id": session_response_ids.get(session_id, 'unknown'),
+            "session_ready": True,
             "timestamp": datetime.now().isoformat()
         }
         await manager.send_personal_message(json.dumps(complete_message), websocket)
         
-        logger.info(f"[SUCCESS] LLM streaming and TTS completed for session {session_id}. Ready for next request.")
+        # RULE 1: GUARANTEED BUFFER CLEARING - even if already cleared during TTS
+        if session_id in session_responses and not session_buffer_cleared.get(session_id, False):
+            logger.info(f"🧹 RULE 1: Final buffer clear after completion for session {session_id}")
+            del session_responses[session_id]
+            session_buffer_cleared[session_id] = True
+        
+        # RULE 2: Complete state reset for next query
+        session_processing[session_id] = False
+        
+        # RULE 4: Clear all query-specific tracking
+        if session_id in session_current_query:
+            del session_current_query[session_id]
+        
+        # RULE 2: Reset state variables for next query
+        session_response_played[session_id] = False
+        session_buffer_cleared[session_id] = False
+        session_tts_completed[session_id] = False
+        session_tts_active[session_id] = False
+        if session_id in session_response_ids:
+            del session_response_ids[session_id]
+        
+        logger.info(f"🔓 RULE 2: Complete state reset for session {session_id} - ready for next request")
+        
+        log_session_state(session_id, "PROCESSING_COMPLETED")
+        
+        # RULE 2: Process any queued queries immediately (FIFO)
+        await process_session_queue(session_id, websocket)
+        
+        # Send explicit session reset notification to UI
+        reset_message = {
+            "type": "session_reset",
+            "message": "Session ready for next query",
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat()
+        }
+        await manager.send_personal_message(json.dumps(reset_message), websocket)
+        
+        logger.info(f"[SUCCESS] RULE COMPLIANCE: LLM streaming and TTS completed for session {session_id}. State cleared, session reset and ready for next request.")
         
     except Exception as e:
         logger.error(f"Error in LLM streaming: {str(e)}")
@@ -952,25 +1353,122 @@ async def handle_llm_streaming(user_message: str, session_id: str, websocket: We
             "timestamp": datetime.now().isoformat()
         }
         await manager.send_personal_message(json.dumps(error_message), websocket)
+        
+        # RULE 3: Clear processing flag and process queue even on LLM error
+        session_processing[session_id] = False
+        
+        # RULE 4: Clear currently processing query tracking on error
+        if session_id in session_current_query:
+            del session_current_query[session_id]
+        
+        # RULE 1: Clear response buffer even on LLM error to prevent replay
+        if session_id in session_responses:
+            logger.info(f"🧹 RULE 1: Clearing response buffer after LLM error for session {session_id}")
+            del session_responses[session_id]
+            session_buffer_cleared[session_id] = True
+        
+        # RULE 4: Reset playback tracking on error
+        session_response_played[session_id] = False
+        session_buffer_cleared[session_id] = False
+        
+        # RULE 2: Process queue even on LLM error 
+        await process_session_queue(session_id, websocket)
     
     finally:
-        # Track the current context for this session
-        if murf_websocket_service:
-            current_context = murf_websocket_service.get_current_context_id()
-            if current_context:
-                session_contexts[session_id] = current_context
-                logger.info(f"🔗 Tracked context {current_context} for session {session_id}")
-        
-        # Always clear the processing flag - use try/except to ensure it happens
+        # Comprehensive cleanup to ensure smooth operation
         try:
-            logger.info(f"[CLEANUP] About to clear processing flag for session {session_id} (current state: {session_processing.get(session_id)})")
-            session_processing[session_id] = False
-            logger.info(f"🔓 Cleared processing flag for session {session_id}")
+            # 1. Cancel any active TTS tasks for this session
+            if session_id in active_tts_tasks and not active_tts_tasks[session_id].done():
+                logger.info(f"[CLEANUP] Cancelling active TTS task for session {session_id}")
+                try:
+                    active_tts_tasks[session_id].cancel()
+                    await active_tts_tasks[session_id]
+                except asyncio.CancelledError:
+                    logger.info(f"[CLEANUP] TTS task cancelled successfully for session {session_id}")
+                except Exception as e:
+                    logger.warning(f"[CLEANUP] Error cancelling TTS task: {e}")
+                finally:
+                    if session_id in active_tts_tasks:
+                        del active_tts_tasks[session_id]
+
+            # 2. Clear the Murf WebSocket context immediately after each response
+            if murf_websocket_service:
+                current_context = murf_websocket_service.get_current_context_id()
+                if current_context:
+                    logger.info(f"[CLEANUP] Clearing Murf context {current_context} for session {session_id}")
+                    try:
+                        await murf_websocket_service._clear_specific_context(current_context)
+                        logger.info(f"[CLEANUP] Successfully cleared context {current_context}")
+                    except Exception as e:
+                        logger.warning(f"[CLEANUP] Error clearing context {current_context}: {e}")
+                        # Force clear from internal tracking
+                        murf_websocket_service.active_contexts.discard(current_context)
+                        murf_websocket_service.current_context_id = None
+
+            # 3. Clean up session tracking data (processing flag already cleared)
+            # Note: Processing flag is cleared immediately after TTS completion for responsiveness
+            
+            # Clear any duplicate detection data to ensure fresh start
+            if session_id in session_last_transcript:
+                del session_last_transcript[session_id]
+            if session_id in session_last_time:
+                del session_last_time[session_id]
+            if session_id in session_last_persona:
+                del session_last_persona[session_id]
+            if session_id in session_persona_changed:
+                del session_persona_changed[session_id]
+            if session_id in session_contexts:
+                del session_contexts[session_id]
+            if session_id in session_responses:
+                del session_responses[session_id]
+            if session_id in session_queues:
+                del session_queues[session_id]
+            # RULE 4: Clear currently processing query tracking  
+            if session_id in session_current_query:
+                del session_current_query[session_id]
+            # RULE 1 & 2: Clear ALL response playback and buffer tracking
+            if session_id in session_response_played:
+                del session_response_played[session_id]
+            if session_id in session_buffer_cleared:
+                del session_buffer_cleared[session_id]
+            if session_id in session_tts_completed:
+                del session_tts_completed[session_id]
+            if session_id in session_tts_active:
+                del session_tts_active[session_id]
+            if session_id in session_response_ids:
+                del session_response_ids[session_id]
+                del session_response_played[session_id]
+            if session_id in session_buffer_cleared:
+                del session_buffer_cleared[session_id]
+            if session_id in session_response_ids:
+                del session_response_ids[session_id]
+            if session_id in session_tts_completed:
+                del session_tts_completed[session_id]
+
+            logger.info(f"🔓 RULE 2: Session {session_id} cleanup completed with all state variables cleared")
             logger.info(f"📊 Current processing flags: {session_processing}")
-        except Exception as flag_error:
-            logger.error(f"❌ Error clearing processing flag for session {session_id}: {flag_error}")
-            # Force clear the flag
+
+        except Exception as cleanup_error:
+            logger.error(f"❌ Error during cleanup for session {session_id}: {cleanup_error}")
+            # RULE 3: Force clear critical flags to prevent session lockup
             session_processing[session_id] = False
+            if session_id in active_tts_tasks:
+                del active_tts_tasks[session_id]
+            if session_id in session_queues:
+                del session_queues[session_id]
+            if session_id in session_current_query:
+                del session_current_query[session_id]
+            # RULE 1 & 4: Force clear response tracking on cleanup error
+            if session_id in session_response_played:
+                del session_response_played[session_id]
+            if session_id in session_buffer_cleared:
+                del session_buffer_cleared[session_id]
+            if session_id in session_tts_completed:
+                del session_tts_completed[session_id]
+            if session_id in session_tts_active:
+                del session_tts_active[session_id]
+            if session_id in session_response_ids:
+                del session_response_ids[session_id]
 
 
 @app.post("/cleanup/temp-audio")
@@ -1092,36 +1590,55 @@ async def audio_stream_websocket(websocket: WebSocket):
                         await manager.send_personal_message(json.dumps(error_message), websocket)
                         return
 
-                    # Quick duplicate check - be more strict to prevent double processing
-                    current_time = datetime.now().timestamp()
-                    time_since_last = current_time - last_processing_time
-                    
-                    # Normalize text for comparison (remove punctuation, case insensitive)
-                    normalized_current = re.sub(r'[^\w\s]', ' ', final_text.lower())
-                    normalized_current = ' '.join(normalized_current.split())  # Normalize whitespace
-                    
-                    normalized_last = re.sub(r'[^\w\s]', ' ', last_processed_transcript.lower())
-                    normalized_last = ' '.join(normalized_last.split())
-                    
-                    # More strict duplicate detection - consider similar text within 5 seconds as duplicate
-                    is_duplicate = (
-                        normalized_current == normalized_last and 
-                        time_since_last < 5.0  # Increased from 1.0 to 5.0 seconds
-                    )
+                    # RULE 1: COMPREHENSIVE DUPLICATE DETECTION
+                    # Check against: currently processing + queue + recent history
+                    if is_duplicate_query(session_id, final_text):
+                        logger.info(f"🚫 DUPLICATE QUERY REJECTED in transcript: '{final_text}'")
+                        return
 
-                    if is_duplicate:
-                        logger.info(f"🚫 Duplicate transcript detected: '{final_text}' - time: {time_since_last:.1f}s")
+                    # Also check if the session is currently processing
+                    is_currently_processing = session_processing.get(session_id, False)
+                    
+                    # Initialize queue for this session if it doesn't exist
+                    if session_id not in session_queues:
+                        session_queues[session_id] = []
+                    
+                    if is_currently_processing:
+                        # RULE 2: Add to FIFO queue (only if not duplicate)
+                        queue_item = {
+                            'text': final_text,
+                            'persona': current_persona,
+                            'web_search_enabled': session_web_search.get(session_id, False),
+                            'timestamp': datetime.now().timestamp()
+                        }
+                        session_queues[session_id].append(queue_item)
+                        queue_length = len(session_queues[session_id])
+                        logger.info(f"📋 UNIQUE query added to queue for session {session_id}: '{final_text}' (Queue length: {queue_length})")
+                        
+                        # Send queue status to client
+                        queue_message = {
+                            "type": "query_queued",
+                            "message": f"Query added to queue (position {queue_length})",
+                            "query": final_text,
+                            "queue_position": queue_length,
+                            "session_id": session_id,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        await manager.send_personal_message(json.dumps(queue_message), websocket)
                         return
 
                     # Process immediately if system is ready
-                    logger.info(f"📝 Processing transcript: '{final_text}' (time since last: {time_since_last:.1f}s)")
+                    current_time = datetime.now().timestamp()
+                    time_since_last = current_time - last_processing_time
+                    logger.info(f"📝 Processing transcript immediately: '{final_text}' (time since last: {time_since_last:.1f}s)")
 
                     # Get web search enabled status
                     web_search_enabled = session_web_search.get(session_id, False)
 
+                    # RULE 3: Always answer the most recent unique query clearly and directly
                     await handle_llm_streaming(final_text, session_id, websocket, current_persona, web_search_enabled=web_search_enabled)
 
-                    # Update tracking variables after successful processing
+                    # RULE 4: Update tracking variables after successful processing
                     last_processed_transcript = final_text
                     last_processing_time = current_time
                     last_processed_persona = current_persona
@@ -1402,6 +1919,10 @@ async def audio_stream_websocket(websocket: WebSocket):
             if session_id in session_processing:
                 session_processing[session_id] = False
                 logger.info(f"[CLEANUP] Cleared processing flag for session {session_id}")
+            # Clear session queue on disconnect
+            if session_id in session_queues:
+                del session_queues[session_id]
+                logger.info(f"[CLEANUP] Cleared session queue for session {session_id}")
         except Exception as e:
             logger.error(f"Error clearing processing flag: {e}")
 
